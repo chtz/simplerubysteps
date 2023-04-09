@@ -8,7 +8,7 @@ Gem::Specification.new do |spec|
   spec.authors       = ["Christian Tschenett"]
   spec.email         = ["simplerubysteps@furthermore.ch"]
 
-  spec.summary       = %q{simplerubysteps makes it easy to manage AWS Step Functions with ruby.}
+  spec.summary       = %q{simplerubysteps makes it easy to manage AWS Step Functions with ruby (eventually - this is an early alpha version and should not really be used by everyone).}
   
   spec.homepage      = "https://github.com/chtz/simplerubysteps"
   spec.license       = "MIT"
