@@ -1,0 +1,122 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Parameters:
+  LambdaS3:
+    Description: LambdaS3.
+    Default: function.zip
+    Type: String  
+  StepFunctionsS3:
+    Description: StepFunctionsS3.
+    Default: my-state-machine-definition.json
+    Type: String    
+  DeployLambda:
+    Description: DeployLambda.
+    Default: "yes"
+    Type: String
+    AllowedValues:
+      - "yes"
+      - "no"
+    ConstraintDescription: must specify yes or no.
+  DeployStepfunctions:
+    Description: DeployStepfunctions.
+    Default: "yes"
+    Type: String
+    AllowedValues:
+      - "yes"
+      - "no"
+    ConstraintDescription: must specify yes or no.    
+Conditions:
+  CreateLambda: !Equals 
+    - !Ref DeployLambda
+    - "yes"
+  CreateStepfunctions: !Equals 
+    - !Ref DeployStepfunctions
+    - "yes"    
+Resources:
+  DeployBucket: 
+    Type: AWS::S3::Bucket
+  LambdaFunction:
+    Type: 'AWS::Lambda::Function'
+    Condition: CreateLambda
+    Properties:
+      Code:
+        S3Bucket: !Ref DeployBucket
+        S3Key: !Ref LambdaS3
+      Handler: function.handler
+      Role: !GetAtt MyLambdaRole.Arn
+      Runtime: ruby2.7
+  StepFunctionsStateMachine:
+    Type: 'AWS::StepFunctions::StateMachine'
+    Condition: CreateStepfunctions
+    Properties:
+      DefinitionS3Location:
+        Bucket: !Ref DeployBucket
+        Key: !Ref StepFunctionsS3
+      RoleArn: !GetAtt StepFunctionsRole.Arn
+  MyLambdaRole:
+    Type: AWS::IAM::Role
+    Condition: CreateLambda
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: lambda-policy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: arn:aws:logs:*:*:*
+  StepFunctionsRole:
+    Type: AWS::IAM::Role
+    Condition: CreateStepfunctions
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: states.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: StepFunctionsPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: arn:aws:logs:*:*:*
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource: !GetAtt LambdaFunction.Arn
+Outputs:
+  DeployBucket:
+    Value: !Ref DeployBucket
+  LambdaRoleARN:
+    Value: !GetAtt MyLambdaRole.Arn
+    Condition: CreateLambda
+  LambdaFunctionARN:
+    Value: !GetAtt LambdaFunction.Arn
+    Condition: CreateLambda
+  LambdaFunctionName:
+    Value: !Ref LambdaFunction
+    Condition: CreateLambda
+  StepFunctionsRoleARN:
+    Value: !GetAtt StepFunctionsRole.Arn
+    Condition: CreateStepfunctions
+  StepFunctionsStateMachineARN:
+    Value: !GetAtt StepFunctionsStateMachine.Arn
+    Condition: CreateStepfunctions
