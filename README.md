@@ -13,14 +13,10 @@ Prerequisites (for alpha version):
 Add this line to your application's Gemfile:
 
 ```ruby
-gem 'simplerubysteps'
+require "simplerubysteps"
 ```
 
-And then execute:
-
-    $ bundle
-
-Or install it yourself as:
+And install the gem:
 
     $ gem install simplerubysteps
 
