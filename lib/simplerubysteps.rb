@@ -76,7 +76,24 @@ module Simplerubysteps
     end
 
     def perform_action(input)
-      @action_block.call(input) if @action_block
+      output = nil
+      output = @action_block.call(input) if @action_block
+
+      if @implicit_choice
+        output = {} unless output
+        @implicit_choice.perform_action(output)
+      end
+
+      output
+    end
+
+    def implicit_choice
+      unless @implicit_choice
+        @implicit_choice = Choice.new("#{name}_choice")
+        $sm.add @implicit_choice
+        self.next = @implicit_choice
+      end
+      @implicit_choice
     end
   end
 
@@ -105,6 +122,8 @@ module Simplerubysteps
   end
 
   class ChoiceItem
+    attr_accessor :implicit_condition_block
+
     def initialize(dict = {}, state = nil)
       @dict = dict
       self.next = state if state
@@ -116,6 +135,12 @@ module Simplerubysteps
 
     def render
       @dict
+    end
+
+    def perform_action(choice_name, output)
+      if @implicit_condition_block
+        output["#{choice_name}_#{@dict[:Next]}"] = @implicit_condition_block.call(output) ? "yes" : "no"
+      end
     end
   end
 
@@ -152,6 +177,12 @@ module Simplerubysteps
       dict[:Choices] = @choices.map { |item| item.render }
       dict
     end
+
+    def perform_action(output)
+      @choices.each do |choice|
+        choice.perform_action name, output
+      end
+    end
   end
 
   # Workflow DSL
@@ -185,6 +216,25 @@ module Simplerubysteps
 
   def transition(state)
     $tasks.last.next = state
+  end
+
+  def transition_to(state, &condition_block)
+    choice = $tasks.last.implicit_choice
+
+    c = ChoiceItem.new({
+      :Variable => "$.#{choice.name}_#{state}",
+      :StringMatches => "yes",
+    })
+    c.next = state
+    c.implicit_condition_block = condition_block
+
+    choice.add c
+  end
+
+  def default_transition_to(state)
+    choice = $tasks.last.implicit_choice
+
+    choice.default = state
   end
 
   def choice(name)

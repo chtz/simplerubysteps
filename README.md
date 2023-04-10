@@ -64,7 +64,7 @@ To install this gem onto your local machine, run `bundle exec rake install`. To 
 * Support for StateMachineType (STANDARD or EXPRESS)
 * Custom IAM role policies (Step Functions and Lambda)
 * sls-like tooling in ruby with AWS SDK
-* Choice abstraction (conditional transitions)
+* Workflow action unit test support
 * ...
 
 ## Contributing
