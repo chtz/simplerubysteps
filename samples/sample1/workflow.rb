@@ -13,8 +13,7 @@ task :t1 do
     string_matches "$.Foo1", "ja" do
       callback :t3 do
         action do |input, token|
-          puts "Callback t3: #{input}, #{token}"
-          # input.merge({ "Foo3": "Bar3x" })
+          puts "Callback t3: #{input}, #{token}" # The logged token is picked up by continue-callbackbranch.sh
         end
 
         transition :t5
