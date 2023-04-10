@@ -42,7 +42,7 @@ simplerubysteps-deploy
 ```
 export AWS_PROFILE=...          
 cd samples/sample1
-echo '{"foo": "John Wick"}' | simplerubysteps-workflow-run
+echo '{"foo": "James Bond"}' | simplerubysteps-workflow-run
 ```
 
 ### Delete CloudFormation stack
