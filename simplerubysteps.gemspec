@@ -16,17 +16,17 @@ Gem::Specification.new do |spec|
   spec.files         = Dir.chdir(File.expand_path('..', __FILE__)) do
     `git ls-files -z`.split("\x0").reject { |f| f.match(%r{^(test|spec|features)/}) }
   end
-  spec.files << "lib/deploy.sh"
-  spec.files << "lib/destroy.sh"
-  spec.files << "lib/workflow-run.sh"
-  spec.files << "lib/statemachine.yaml"
-  spec.files << "lib/function.rb"
+  #spec.files << "lib/deploy.sh"
+  #spec.files << "lib/destroy.sh"
+  #spec.files << "lib/workflow-run.sh"
+  #spec.files << "lib/statemachine.yaml"
+  #spec.files << "lib/function.rb"
 
   spec.bindir        = "exe"
   spec.executables   = spec.files.grep(%r{^exe/}) { |f| File.basename(f) }
-  spec.executables << "simplerubysteps-deploy"
-  spec.executables << "simplerubysteps-destroy"
-  spec.executables << "simplerubysteps-workflow-run"
+  #spec.executables << "simplerubysteps-deploy"
+  #spec.executables << "simplerubysteps-destroy"
+  #spec.executables << "simplerubysteps-workflow-run"
   
   spec.require_paths = ["lib"]
 
