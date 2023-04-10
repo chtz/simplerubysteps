@@ -59,6 +59,14 @@ After checking out the repo, run `bin/setup` to install dependencies.
 
 To install this gem onto your local machine, run `bundle exec rake install`. To release a new version, update the version number in `version.rb`, and then run `bundle exec rake release`, which will create a git tag for the version, push git commits and tags, and push the `.gem` file to [rubygems.org](https://rubygems.org).
 
+### TODOs
+
+* Support for StateMachineType (STANDARD or EXPRESS)
+* Custom IAM role policies (Step Functions and Lambda)
+* sls-like tooling in ruby with AWS SDK
+* Choice abstraction (conditional transitions)
+* ...
+
 ## Contributing
 
 Bug reports and pull requests are (soon - after alpha phase) welcome on GitHub at https://github.com/chtz/simplerubysteps
