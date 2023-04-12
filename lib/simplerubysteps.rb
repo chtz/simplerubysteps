@@ -14,9 +14,11 @@ module Simplerubysteps
   class StateMachine
     attr_reader :states
     attr_reader :start_at
+    attr_accessor :kind
 
     def initialize()
       @states = {}
+      @kind = "STANDARD"
     end
 
     def add(state)
@@ -189,6 +191,10 @@ module Simplerubysteps
 
   $sm = StateMachine.new
   $tasks = []
+  
+  def kind(k)
+    $sm.kind = k
+  end
 
   def task(name)
     t = $sm.add Task.new(name)

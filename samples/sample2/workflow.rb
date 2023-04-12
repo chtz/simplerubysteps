@@ -3,6 +3,8 @@
 require "simplerubysteps"
 include Simplerubysteps
 
+kind "EXPRESS"
+
 task :t1 do
   action do |input|
     puts "Task t1: #{input}"

@@ -66,13 +66,14 @@ fi
 echo "Uploading state machine JSON"
 
 ruby -e 'require "./workflow.rb";puts $sm.render.to_json' > /tmp/my-state-machine-definition.json
+export WF_TYPE=$(ruby -e 'require "./workflow.rb";puts $sm.kind')
 export STATE_MACHINE_JSON_SHA=$(shasum /tmp/my-state-machine-definition.json | awk '{print $1}')
 export UPLOADED_STATE_MACHINE_JSON=statemachine-$STATE_MACHINE_JSON_SHA.zip
 aws s3 cp /tmp/my-state-machine-definition.json s3://$DEPLOY_BUCKET/$UPLOADED_STATE_MACHINE_JSON
 
 echo "Updating CloudFormation Stack"
 
-echo '[{"ParameterKey":"DeployLambda","ParameterValue":"yes"},{"ParameterKey":"DeployStepfunctions","ParameterValue":"yes"},{"ParameterKey":"LambdaS3","ParameterValue":"'$UPLOADED_LAMBDA_ZIP'"},{"ParameterKey":"StepFunctionsS3","ParameterValue":"'$UPLOADED_STATE_MACHINE_JSON'"}]' > /tmp/params.json
+echo '[{"ParameterKey":"DeployLambda","ParameterValue":"yes"},{"ParameterKey":"DeployStepfunctions","ParameterValue":"yes"},{"ParameterKey":"LambdaS3","ParameterValue":"'$UPLOADED_LAMBDA_ZIP'"},{"ParameterKey":"StepFunctionsS3","ParameterValue":"'$UPLOADED_STATE_MACHINE_JSON'"},{"ParameterKey":"StateMachineType","ParameterValue":"'$WF_TYPE'"}]' > /tmp/params.json
 
 aws cloudformation deploy \
   --template-file $CF_TEMPLATE \

@@ -25,6 +25,10 @@ Parameters:
       - "yes"
       - "no"
     ConstraintDescription: must specify yes or no.    
+  StateMachineType:
+    Description: StateMachineType.
+    Default: STANDARD
+    Type: String    
 Conditions:
   CreateLambda: !Equals 
     - !Ref DeployLambda
@@ -53,6 +57,7 @@ Resources:
         Bucket: !Ref DeployBucket
         Key: !Ref StepFunctionsS3
       RoleArn: !GetAtt StepFunctionsRole.Arn
+      StateMachineType: !Ref StateMachineType
   MyLambdaRole:
     Type: AWS::IAM::Role
     Condition: CreateLambda
