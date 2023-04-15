@@ -1,5 +1,6 @@
 require "aws-sdk-cloudformation"
 require "aws-sdk-s3"
+require "aws-sdk-states"
 require "digest"
 require "zip"
 require "tempfile"
@@ -8,6 +9,7 @@ require "optparse"
 
 $cloudformation_client = Aws::CloudFormation::Client.new
 $s3_client = Aws::S3::Client.new
+$states_client = Aws::States::Client.new
 
 def stack_outputs(stack_name)
   begin
@@ -169,16 +171,97 @@ def deploy(workflow_type)
   puts "State machine: #{current_stack_outputs["StepFunctionsStateMachineARN"]}"
 end
 
+def start_sync_execution(state_machine_arn, input)
+  $states_client.start_sync_execution(
+    state_machine_arn: state_machine_arn,
+    input: input,
+  )
+end
+
+def start_async_execution(state_machine_arn, input)
+  $states_client.start_execution(
+    state_machine_arn: state_machine_arn,
+    input: input,
+  )
+end
+
+def describe_execution(execution_arn)
+  $states_client.describe_execution(
+    execution_arn: execution_arn,
+  )
+end
+
+def wait_for_async_execution_completion(execution_arn)
+  response = nil
+
+  loop do
+    response = describe_execution(execution_arn)
+    status = response.status
+
+    break if %w[SUCCEEDED FAILED TIMED_OUT].include?(status)
+
+    sleep 5
+  end
+
+  response
+end
+
+def start(workflow_type, wait = true, input = $stdin)
+  current_stack_outputs = stack_outputs(stack_name_from_current_dir)
+  state_machine_arn = current_stack_outputs["StepFunctionsStateMachineARN"]
+  raise "State Machine is not deployed" unless state_machine_arn
+
+  input_json = JSON.parse(input.read).to_json
+
+  if workflow_type == "STANDARD"
+    start_response = start_async_execution(state_machine_arn, input_json)
+
+    unless wait
+      puts start_response.to_json
+    else
+      execution_arn = start_response.execution_arn
+
+      puts wait_for_async_execution_completion(execution_arn).to_json
+    end
+  elsif workflow_type == "EXPRESS"
+    puts start_sync_execution(state_machine_arn, input_json).to_json
+  else
+    raise "Unknown state machine type: #{workflow_type}"
+  end
+end
+
 options = {
   :workflow_type => "STANDARD",
+  :wait => false,
+  :input => $stdin,
 }
 
 subcommands = {
   "deploy" => OptionParser.new do |opts|
     opts.banner = "Usage: #{$0} deploy [options]"
 
-    opts.on("--type VALUE", "STANDARD or EXPRESS") do |value|
+    opts.on("--type VALUE", "STANDARD (default) or EXPRESS") do |value|
       options[:workflow_type] = value
+    end
+
+    opts.on("-h", "--help", "Display this help message") do
+      puts opts
+      exit
+    end
+  end,
+  "start" => OptionParser.new do |opts|
+    opts.banner = "Usage: #{$0} start [options]"
+
+    opts.on("--type VALUE", "STANDARD (default) or EXPRESS") do |value|
+      options[:workflow_type] = value
+    end
+
+    opts.on("--wait VALUE", "true (default and always true for EXPRESS) or false (default for STANDARD)") do |value|
+      options[:wait] = "true" == value
+    end
+
+    opts.on("--input VALUE", "/path/to/file (STDIN will be used per default)") do |value|
+      options[:input] = File.new(value)
     end
 
     opts.on("-h", "--help", "Display this help message") do
@@ -192,7 +275,8 @@ global = OptionParser.new do |opts|
   opts.banner = "Usage: #{$0} [command] [options]"
   opts.separator ""
   opts.separator "Commands:"
-  opts.separator "    deploy        Execute the 'deploy' subcommand"
+  opts.separator "    deploy        Create Step Functions State Machine"
+  opts.separator "    start         Start State Machine execution"
   opts.separator ""
 
   opts.on_tail("-h", "--help", "Display this help message") do
@@ -219,4 +303,6 @@ end
 
 if options[:command] == "deploy"
   deploy options[:workflow_type]
+elsif options[:command] == "start"
+  start options[:workflow_type], options[:wait], options[:input]
 end
