@@ -14,7 +14,7 @@ $s3_client = Aws::S3::Client.new
 $states_client = Aws::States::Client.new
 $logs_client = Aws::CloudWatchLogs::Client.new
 
-def tail_follow_logs(log_group_name)
+def tail_follow_logs(log_group_name) # FIXME too hacky and not really working
   Signal.trap("INT") do
     exit
   end
@@ -22,6 +22,7 @@ def tail_follow_logs(log_group_name)
   first_event_time = Time.now.to_i * 1000
 
   next_tokens = {}
+  first_round = true
   loop do
     log_streams = $logs_client.describe_log_streams(
       log_group_name: log_group_name,
@@ -38,7 +39,7 @@ def tail_follow_logs(log_group_name)
       if next_tokens.key?(log_stream.log_stream_name)
         get_log_events_params[:next_token] = next_tokens[log_stream.log_stream_name]
       else
-        get_log_events_params[:start_time] = log_stream.last_event_timestamp
+        get_log_events_params[:start_time] = first_round ? log_stream.last_event_timestamp : first_event_time
       end
 
       response = $logs_client.get_log_events(get_log_events_params)
@@ -53,6 +54,8 @@ def tail_follow_logs(log_group_name)
     end
 
     sleep 5
+
+    first_round = false
   end
 end
 
