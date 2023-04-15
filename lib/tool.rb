@@ -48,10 +48,25 @@ def stack_update(stack_name, template, parameters)
   begin
     $cloudformation_client.update_stack(stack_params(stack_name, template, parameters))
     $cloudformation_client.wait_until(:stack_update_complete, stack_name: stack_name)
+    stack_outputs(stack_name)
   rescue Aws::CloudFormation::Errors::ServiceError => error
-    raise error unless error.message =~ /No updates are to be performed/
+    return stack_outputs(stack_name).merge({ :no_update => true }) if error.message =~ /No updates are to be performed/
+    raise unless error.message =~ /No updates are to be performed/
   end
-  stack_outputs(stack_name)
+end
+
+def upload_to_s3(bucket, key, body)
+  $s3_client.put_object(
+    bucket: bucket,
+    key: key,
+    body: body,
+  )
+end
+
+def upload_file_to_s3(bucket, key, file_path)
+  File.open(file_path, "rb") do |file|
+    upload_to_s3(bucket, key, file)
+  end
 end
 
 def create_zip(zip_file, files_by_name)
@@ -72,6 +87,14 @@ def dir_files(base_dir, glob)
   files_by_name
 end
 
+def stack_name_from_current_dir
+  File.basename(File.expand_path("."))
+end
+
+def workflow_files
+  dir_files ".", "**/*.rb"
+end
+
 def my_lib_files
   dir_files File.dirname(__FILE__), "**/*.rb"
 end
@@ -80,32 +103,6 @@ def cloudformation_template
   File.open("#{File.dirname(__FILE__)}/statemachine.yaml", "r") do |file|
     return file.read
   end
-end
-
-def workflow_files
-  dir_files ".", "**/*.rb"
-end
-
-def upload_file_to_s3(bucket, key, file_path)
-  File.open(file_path, "rb") do |file|
-    $s3_client.put_object(
-      bucket: bucket,
-      key: key,
-      body: file,
-    )
-  end
-end
-
-def upload_to_s3(bucket, key, body)
-  $s3_client.put_object(
-    bucket: bucket,
-    key: key,
-    body: body,
-  )
-end
-
-def stack_name_from_current_dir
-  File.basename(File.expand_path("."))
 end
 
 current_stack_outputs = stack_outputs(stack_name_from_current_dir)
@@ -163,6 +160,10 @@ current_stack_outputs = stack_update(stack_name_from_current_dir, cloudformation
   "StateMachineType" => WF_TYPE,
 })
 
-# FIXME indicate updated yes/no
+if current_stack_outputs[:no_update]
+  puts "Stack not updated"
+else
+  puts "Stack updated"
+end
 
 puts "State machine: #{current_stack_outputs["StepFunctionsStateMachineARN"]}"
