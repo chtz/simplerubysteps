@@ -6,10 +6,55 @@ require "zip"
 require "tempfile"
 require "json"
 require "optparse"
+require "aws-sdk-cloudwatchlogs"
+require "time"
 
 $cloudformation_client = Aws::CloudFormation::Client.new
 $s3_client = Aws::S3::Client.new
 $states_client = Aws::States::Client.new
+$logs_client = Aws::CloudWatchLogs::Client.new
+
+def tail_follow_logs(log_group_name)
+  Signal.trap("INT") do
+    exit
+  end
+
+  first_event_time = Time.now.to_i * 1000
+
+  next_tokens = {}
+  loop do
+    log_streams = $logs_client.describe_log_streams(
+      log_group_name: log_group_name,
+      order_by: "LastEventTime",
+      descending: true,
+    ).log_streams
+
+    log_streams.each do |log_stream|
+      get_log_events_params = {
+        log_group_name: log_group_name,
+        log_stream_name: log_stream.log_stream_name,
+      }
+
+      if next_tokens.key?(log_stream.log_stream_name)
+        get_log_events_params[:next_token] = next_tokens[log_stream.log_stream_name]
+      else
+        get_log_events_params[:start_time] = log_stream.last_event_timestamp
+      end
+
+      response = $logs_client.get_log_events(get_log_events_params)
+
+      response.events.each do |event|
+        if event.timestamp >= first_event_time
+          puts "#{Time.at(event.timestamp / 1000).utc} - #{log_stream.log_stream_name} - #{event.message}"
+        end
+      end
+
+      next_tokens[log_stream.log_stream_name] = response.next_forward_token
+    end
+
+    sleep 5
+  end
+end
 
 def stack_outputs(stack_name)
   begin
@@ -112,6 +157,14 @@ def cloudformation_template
   File.open("#{File.dirname(__FILE__)}/statemachine.yaml", "r") do |file|
     return file.read
   end
+end
+
+def log
+  current_stack_outputs = stack_outputs(stack_name_from_current_dir)
+  function_name = current_stack_outputs["LambdaFunctionName"]
+  rause "State Machine is not deployed" unless function_name
+
+  tail_follow_logs "/aws/lambda/#{function_name}"
 end
 
 def destroy
@@ -289,6 +342,14 @@ subcommands = {
       exit
     end
   end,
+  "log" => OptionParser.new do |opts|
+    opts.banner = "Usage: #{$0} log [options]"
+
+    opts.on("-h", "--help", "Display this help message") do
+      puts opts
+      exit
+    end
+  end,
   "start" => OptionParser.new do |opts|
     opts.banner = "Usage: #{$0} start [options]"
 
@@ -309,7 +370,6 @@ subcommands = {
       exit
     end
   end,
-
   "task-success" => OptionParser.new do |opts|
     opts.banner = "Usage: #{$0} task-success [options]"
 
@@ -334,6 +394,7 @@ global = OptionParser.new do |opts|
   opts.separator "Commands:"
   opts.separator "    deploy        Create Step Functions State Machine"
   opts.separator "    destroy       Delete Step Functions State Machine"
+  opts.separator "    log           Continuously prints Lambda function log output"
   opts.separator "    start         Start State Machine execution"
   opts.separator "    task-success  Continue Start State Machine execution"
   opts.separator ""
@@ -364,6 +425,8 @@ if options[:command] == "deploy"
   deploy options[:workflow_type]
 elsif options[:command] == "start"
   start options[:workflow_type], options[:wait], options[:input]
+elsif options[:command] == "log"
+  log
 elsif options[:command] == "task-success"
   send_task_success options[:token], options[:input]
 elsif options[:command] == "destroy"
