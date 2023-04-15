@@ -2,52 +2,93 @@
 
 Simplerubysteps makes it easy to manage AWS Step Functions with ruby (this is an early alpha version and should not really be used by anyone).
 
-## Installation
+## Installation and Usage
 
-Prerequisites:
-* AWS CLI installed and configured (profiles)
+### Prerequisites
 
-## Usage
+* AWS CLI installed (mainly for debugging privileges)
+* Configured AWS CLI profile with sufficient permissions to create IAM roles and policies, create Lambda functions, create and run Step Functions state machines, run CloudWatch log queries, etc.
 
-### Install the gem and the simplerubysteps CLI
+### Install the gem and the srs CLI
 
 ```
 gem install simplerubysteps
 ```
 
-### Create AWS Step Functions State Machine with ruby DSL
+### Create an AWS Step Function State Machine with the simplerubysteps Ruby DSL
 
 ```
-cd samples/sample1
+mkdir -p samples/hello-world
+cd samples/hello-world
+
 vi workflow.rb
 ```
 
-### Create CloudFormation stack with Step Functions State Machine and supporting Lambda function
+#### Hello World State Machine (workflow.rb)
 
 ```
-export AWS_PROFILE=...
-cd samples/sample1
-simplerubysteps deploy
+require "simplerubysteps"
+include Simplerubysteps
+
+kind "EXPRESS"
+
+task :start do
+  transition_to :even do |data|
+    data["number"] % 2 == 0
+  end
+
+  default_transition_to :odd
+end
+
+task :even do
+  action do |data|
+    number = data["number"]
+
+    puts "Just for the record, I've discovered an even number: #{number}"
+
+    {
+      result: "#{number} is even",
+    }
+  end
+end
+
+task :odd do
+  action do |data|
+    {
+      result: "#{data["number"]} is odd",
+    }
+  end
+end
 ```
 
-### Trigger State Machine Execution and wait for completion
+### Deploy the Step Functions State Machine and the Lambda function that implements the Task Actions.
 
 ```
-export AWS_PROFILE=...          
-cd samples/sample1
+export AWS_PROFILE=<AWS CLI profile name with sufficient privileges>
+cd samples/hello-world
 
-./start-directbranch.sh
+srs deploy
+```
 
-./sample-task-worker.sh &
-./start-callbackbranch.sh
+### Trigger State Machine executions
+
+```
+export AWS_PROFILE=<AWS CLI profile name with sufficient privileges>
+cd samples/hello-world
+
+echo "Enter a number"
+read NUMBER
+
+echo "{\"number\":$NUMBER}" | srs start | jq -r ".output" | jq -r ".result"
+# Above: will print "123 is odd" for input "123"
 ```
 
 ### Delete CloudFormation stack
 
 ```
-export AWS_PROFILE=...
-cd samples/sample1
-simplerubysteps destroy
+export AWS_PROFILE=<AWS CLI profile name with sufficient privileges>
+
+srs destroy
 ```
 
 ## Development
@@ -56,8 +97,9 @@ To install this gem onto your local machine, run `bundle exec rake install`. To 
 
 ### TODOs
 
-* Custom IAM policies per Lambda task
+* Custom IAM policies per Lambda task (e.g. to allow a task to send a message to an SQS queue)
 * Workflow action unit test support
+* Better error handling and reporting
 * ...
 
 ## Contributing

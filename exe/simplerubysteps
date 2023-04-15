@@ -1,6 +1,6 @@
 #!/usr/bin/env ruby
 
-bin_dir = File.expand_path(File.dirname(__FILE__))
-include_path = File.join(bin_dir, "../lib/tool.rb")
+require "simplerubysteps"
+require "simplerubysteps/tool"
 
-require include_path
+Simplerubysteps::Tool.new.run

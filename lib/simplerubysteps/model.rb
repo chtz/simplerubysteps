@@ -66,6 +66,8 @@ module Simplerubysteps
         :Task => name,
         "Input.$" => "$",
       }
+
+      action { |input| input } # default: pass through
     end
 
     def action(&action_block)
