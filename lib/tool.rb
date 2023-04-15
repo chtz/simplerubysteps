@@ -4,6 +4,7 @@ require "digest"
 require "zip"
 require "tempfile"
 require "json"
+require "optparse"
 
 $cloudformation_client = Aws::CloudFormation::Client.new
 $s3_client = Aws::S3::Client.new
@@ -105,65 +106,117 @@ def cloudformation_template
   end
 end
 
-current_stack_outputs = stack_outputs(stack_name_from_current_dir)
+def deploy(workflow_type)
+  current_stack_outputs = stack_outputs(stack_name_from_current_dir)
 
-unless current_stack_outputs
-  current_stack_outputs = stack_create(stack_name_from_current_dir, cloudformation_template, {
-    "DeployLambda" => "no",
-    "DeployStepfunctions" => "no",
-    "LambdaS3" => "",
-    "StepFunctionsS3" => "",
-    "StateMachineType" => "",
-  })
+  unless current_stack_outputs
+    current_stack_outputs = stack_create(stack_name_from_current_dir, cloudformation_template, {
+      "DeployLambda" => "no",
+      "DeployStepfunctions" => "no",
+      "LambdaS3" => "",
+      "StepFunctionsS3" => "",
+      "StateMachineType" => "",
+    })
 
-  puts "Deployment bucket created"
-end
+    puts "Deployment bucket created"
+  end
 
-deploy_bucket = current_stack_outputs["DeployBucket"]
-puts "Deployment bucket: #{deploy_bucket}"
+  deploy_bucket = current_stack_outputs["DeployBucket"]
+  puts "Deployment bucket: #{deploy_bucket}"
 
-function_zip_temp = Tempfile.new("function")
-create_zip function_zip_temp.path, my_lib_files.merge(workflow_files)
-LAMBDA_SHA = Digest::SHA1.file function_zip_temp.path
-UPLOADED_LAMBDA_ZIP = "function-#{LAMBDA_SHA}.zip"
-upload_file_to_s3 deploy_bucket, UPLOADED_LAMBDA_ZIP, function_zip_temp.path
-puts "Uploaded: #{UPLOADED_LAMBDA_ZIP}"
+  function_zip_temp = Tempfile.new("function")
+  create_zip function_zip_temp.path, my_lib_files.merge(workflow_files)
+  lambda_sha = Digest::SHA1.file function_zip_temp.path
+  lambda_zip_name = "function-#{lambda_sha}.zip"
+  upload_file_to_s3 deploy_bucket, lambda_zip_name, function_zip_temp.path
+  puts "Uploaded: #{lambda_zip_name}"
 
-unless current_stack_outputs["LambdaFunctionARN"]
+  unless current_stack_outputs["LambdaFunctionARN"]
+    current_stack_outputs = stack_update(stack_name_from_current_dir, cloudformation_template, {
+      "DeployLambda" => "yes",
+      "DeployStepfunctions" => "no",
+      "LambdaS3" => lambda_zip_name,
+      "StepFunctionsS3" => "",
+      "StateMachineType" => "",
+    })
+
+    puts "Lambda function created"
+  end
+
+  lambda_arn = current_stack_outputs["LambdaFunctionARN"]
+  puts "Lambda function: #{lambda_arn}"
+
+  state_machine_json = JSON.parse(`LAMBDA_FUNCTION_ARN=#{lambda_arn} ruby -e 'require "./workflow.rb";puts $sm.render.to_json'`).to_json
+  state_machine_json_sha = Digest::SHA1.hexdigest state_machine_json
+  state_machine_json_name = "statemachine-#{state_machine_json_sha}.json"
+  upload_to_s3 deploy_bucket, state_machine_json_name, state_machine_json
+  puts "Uploaded: #{state_machine_json_name}"
+
   current_stack_outputs = stack_update(stack_name_from_current_dir, cloudformation_template, {
     "DeployLambda" => "yes",
-    "DeployStepfunctions" => "no",
-    "LambdaS3" => UPLOADED_LAMBDA_ZIP,
-    "StepFunctionsS3" => "",
-    "StateMachineType" => "",
+    "DeployStepfunctions" => "yes",
+    "LambdaS3" => lambda_zip_name,
+    "StepFunctionsS3" => state_machine_json_name,
+    "StateMachineType" => workflow_type,
   })
 
-  puts "Lambda function created"
+  if current_stack_outputs[:no_update]
+    puts "Stack not updated"
+  else
+    puts "Stack updated"
+  end
+
+  puts "State machine: #{current_stack_outputs["StepFunctionsStateMachineARN"]}"
 end
 
-lambda_arn = current_stack_outputs["LambdaFunctionARN"]
-puts "Lambda function: #{lambda_arn}"
+options = {
+  :workflow_type => "STANDARD",
+}
 
-WF_TYPE = "STANDARD"
+subcommands = {
+  "deploy" => OptionParser.new do |opts|
+    opts.banner = "Usage: #{$0} deploy [options]"
 
-state_machine_json = JSON.parse(`LAMBDA_FUNCTION_ARN=#{lambda_arn} ruby -e 'require "./workflow.rb";puts $sm.render.to_json'`).to_json
-STATE_MACHINE_JSON_SHA = Digest::SHA1.hexdigest state_machine_json
-UPLOADED_STATE_MACHINE_JSON = "statemachine-#{STATE_MACHINE_JSON_SHA}.json"
-upload_to_s3 deploy_bucket, UPLOADED_STATE_MACHINE_JSON, state_machine_json
-puts "Uploaded: #{UPLOADED_STATE_MACHINE_JSON}"
+    opts.on("--type VALUE", "STANDARD or EXPRESS") do |value|
+      options[:workflow_type] = value
+    end
 
-current_stack_outputs = stack_update(stack_name_from_current_dir, cloudformation_template, {
-  "DeployLambda" => "yes",
-  "DeployStepfunctions" => "yes",
-  "LambdaS3" => UPLOADED_LAMBDA_ZIP,
-  "StepFunctionsS3" => UPLOADED_STATE_MACHINE_JSON,
-  "StateMachineType" => WF_TYPE,
-})
+    opts.on("-h", "--help", "Display this help message") do
+      puts opts
+      exit
+    end
+  end,
+}
 
-if current_stack_outputs[:no_update]
-  puts "Stack not updated"
-else
-  puts "Stack updated"
+global = OptionParser.new do |opts|
+  opts.banner = "Usage: #{$0} [command] [options]"
+  opts.separator ""
+  opts.separator "Commands:"
+  opts.separator "    deploy        Execute the 'deploy' subcommand"
+  opts.separator ""
+
+  opts.on_tail("-h", "--help", "Display this help message") do
+    puts opts
+    exit
+  end
 end
 
-puts "State machine: #{current_stack_outputs["StepFunctionsStateMachineARN"]}"
+begin
+  global.order!(ARGV)
+  command = ARGV.shift
+  options[:command] = command
+  subcommands.fetch(command).parse!(ARGV)
+rescue KeyError
+  puts "Unknown command: '#{command}'"
+  puts
+  puts global
+  exit 1
+rescue OptionParser::ParseError => error
+  puts error.message
+  puts subcommands.fetch(command)
+  exit 1
+end
+
+if options[:command] == "deploy"
+  deploy options[:workflow_type]
+end
