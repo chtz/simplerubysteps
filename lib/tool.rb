@@ -14,7 +14,7 @@ $s3_client = Aws::S3::Client.new
 $states_client = Aws::States::Client.new
 $logs_client = Aws::CloudWatchLogs::Client.new
 
-def tail_follow_logs(log_group_name) # FIXME too hacky and not really working
+def tail_follow_logs(log_group_name, extract_pattern = nil) # FIXME too hacky and not really working
   Signal.trap("INT") do
     exit
   end
@@ -46,7 +46,14 @@ def tail_follow_logs(log_group_name) # FIXME too hacky and not really working
 
       response.events.each do |event|
         if event.timestamp >= first_event_time
-          puts "#{Time.at(event.timestamp / 1000).utc} - #{log_stream.log_stream_name} - #{event.message}"
+          if extract_pattern
+            if /#{extract_pattern}/ =~ event.message
+              puts $1
+              exit
+            end
+          else
+            puts "#{Time.at(event.timestamp / 1000).utc} - #{log_stream.log_stream_name} - #{event.message}"
+          end
         end
       end
 
@@ -162,12 +169,12 @@ def cloudformation_template
   end
 end
 
-def log
+def log(extract_pattern = nil)
   current_stack_outputs = stack_outputs(stack_name_from_current_dir)
   function_name = current_stack_outputs["LambdaFunctionName"]
   rause "State Machine is not deployed" unless function_name
 
-  tail_follow_logs "/aws/lambda/#{function_name}"
+  tail_follow_logs "/aws/lambda/#{function_name}", extract_pattern
 end
 
 def destroy
@@ -348,6 +355,10 @@ subcommands = {
   "log" => OptionParser.new do |opts|
     opts.banner = "Usage: #{$0} log [options]"
 
+    opts.on("--extract_pattern VALUE", "Waits for and extracts pattern") do |value|
+      options[:extract_pattern] = value
+    end
+
     opts.on("-h", "--help", "Display this help message") do
       puts opts
       exit
@@ -429,7 +440,7 @@ if options[:command] == "deploy"
 elsif options[:command] == "start"
   start options[:workflow_type], options[:wait], options[:input]
 elsif options[:command] == "log"
-  log
+  log options[:extract_pattern]
 elsif options[:command] == "task-success"
   send_task_success options[:token], options[:input]
 elsif options[:command] == "destroy"
