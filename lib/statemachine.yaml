@@ -125,3 +125,5 @@ Outputs:
   StepFunctionsStateMachineARN:
     Value: !GetAtt StepFunctionsStateMachine.Arn
     Condition: CreateStepfunctions
+  StateMachineType:
+    Value: !Ref StateMachineType

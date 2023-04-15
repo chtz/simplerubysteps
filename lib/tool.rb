@@ -173,7 +173,7 @@ end
 def log(extract_pattern = nil)
   current_stack_outputs = stack_outputs(stack_name_from_current_dir)
   function_name = current_stack_outputs["LambdaFunctionName"]
-  rause "State Machine is not deployed" unless function_name
+  raise "State Machine is not deployed" unless function_name
 
   tail_follow_logs "/aws/lambda/#{function_name}", extract_pattern
 end
@@ -193,7 +193,7 @@ def destroy
   puts "Stack deleted"
 end
 
-def deploy(workflow_type)
+def deploy
   current_stack_outputs = stack_outputs(stack_name_from_current_dir)
 
   unless current_stack_outputs
@@ -209,6 +209,7 @@ def deploy(workflow_type)
   end
 
   deploy_bucket = current_stack_outputs["DeployBucket"]
+
   puts "Deployment bucket: #{deploy_bucket}"
 
   function_zip_temp = Tempfile.new("function")
@@ -216,6 +217,7 @@ def deploy(workflow_type)
   lambda_sha = Digest::SHA1.file function_zip_temp.path
   lambda_zip_name = "function-#{lambda_sha}.zip"
   upload_file_to_s3 deploy_bucket, lambda_zip_name, function_zip_temp.path
+
   puts "Uploaded: #{lambda_zip_name}"
 
   unless current_stack_outputs["LambdaFunctionARN"]
@@ -231,12 +233,16 @@ def deploy(workflow_type)
   end
 
   lambda_arn = current_stack_outputs["LambdaFunctionARN"]
+
   puts "Lambda function: #{lambda_arn}"
+
+  workflow_type = `ruby -e 'require "./workflow.rb";puts $sm.kind'`.strip
 
   state_machine_json = JSON.parse(`LAMBDA_FUNCTION_ARN=#{lambda_arn} ruby -e 'require "./workflow.rb";puts $sm.render.to_json'`).to_json
   state_machine_json_sha = Digest::SHA1.hexdigest state_machine_json
   state_machine_json_name = "statemachine-#{state_machine_json_sha}.json"
   upload_to_s3 deploy_bucket, state_machine_json_name, state_machine_json
+
   puts "Uploaded: #{state_machine_json_name}"
 
   current_stack_outputs = stack_update(stack_name_from_current_dir, cloudformation_template, {
@@ -291,14 +297,14 @@ def wait_for_async_execution_completion(execution_arn)
   response
 end
 
-def start(workflow_type, wait = true, input = $stdin)
+def start(wait = true, input = $stdin)
   current_stack_outputs = stack_outputs(stack_name_from_current_dir)
   state_machine_arn = current_stack_outputs["StepFunctionsStateMachineARN"]
   raise "State Machine is not deployed" unless state_machine_arn
 
   input_json = JSON.parse(input.read).to_json
 
-  if workflow_type == "STANDARD"
+  if current_stack_outputs["StateMachineType"] == "STANDARD"
     start_response = start_async_execution(state_machine_arn, input_json)
 
     unless wait
@@ -308,10 +314,10 @@ def start(workflow_type, wait = true, input = $stdin)
 
       puts wait_for_async_execution_completion(execution_arn).to_json
     end
-  elsif workflow_type == "EXPRESS"
+  elsif current_stack_outputs["StateMachineType"] == "EXPRESS"
     puts start_sync_execution(state_machine_arn, input_json).to_json
   else
-    raise "Unknown state machine type: #{workflow_type}"
+    raise "Unknown state machine type: #{current_stack_outputs["StateMachineType"]}"
   end
 end
 
@@ -327,7 +333,6 @@ def send_task_success(task_token, output = $stdin)
 end
 
 options = {
-  :workflow_type => "STANDARD",
   :wait => false,
   :input => $stdin,
 }
@@ -335,10 +340,6 @@ options = {
 subcommands = {
   "deploy" => OptionParser.new do |opts|
     opts.banner = "Usage: #{$0} deploy [options]"
-
-    opts.on("--type VALUE", "STANDARD (default) or EXPRESS") do |value|
-      options[:workflow_type] = value
-    end
 
     opts.on("-h", "--help", "Display this help message") do
       puts opts
@@ -356,7 +357,7 @@ subcommands = {
   "log" => OptionParser.new do |opts|
     opts.banner = "Usage: #{$0} log [options]"
 
-    opts.on("--extract_pattern VALUE", "Waits for and extracts pattern") do |value|
+    opts.on("--extract_pattern VALUE", "Wait for and extract pattern") do |value|
       options[:extract_pattern] = value
     end
 
@@ -368,12 +369,8 @@ subcommands = {
   "start" => OptionParser.new do |opts|
     opts.banner = "Usage: #{$0} start [options]"
 
-    opts.on("--type VALUE", "STANDARD (default) or EXPRESS") do |value|
-      options[:workflow_type] = value
-    end
-
-    opts.on("--wait VALUE", "true (default and always true for EXPRESS) or false (default for STANDARD)") do |value|
-      options[:wait] = "true" == value
+    opts.on("--wait", "Wait for STANDARD state machine to complete") do
+      options[:wait] = true
     end
 
     opts.on("--input VALUE", "/path/to/file (STDIN will be used per default)") do |value|
@@ -404,9 +401,9 @@ subcommands = {
 }
 
 global = OptionParser.new do |opts|
-  opts.banner = "Usage (#{Simplerubysteps::VERSION}) : #{$0} [command] [options]"
+  opts.banner = "Usage: #{$0} [command] [options]"
   opts.separator ""
-  opts.separator "Commands:"
+  opts.separator "Commands (#{Simplerubysteps::VERSION}):"
   opts.separator "    deploy        Create Step Functions State Machine"
   opts.separator "    destroy       Delete Step Functions State Machine"
   opts.separator "    log           Continuously prints Lambda function log output"
@@ -437,9 +434,9 @@ rescue OptionParser::ParseError => error
 end
 
 if options[:command] == "deploy"
-  deploy options[:workflow_type]
+  deploy
 elsif options[:command] == "start"
-  start options[:workflow_type], options[:wait], options[:input]
+  start options[:wait], options[:input]
 elsif options[:command] == "log"
   log options[:extract_pattern]
 elsif options[:command] == "task-success"

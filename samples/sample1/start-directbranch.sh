@@ -1,3 +1,3 @@
 #!/bin/bash
 
-echo '{"foo": "James Bond"}'|simplerubysteps start --wait true|jq -r ".output"|jq
+echo '{"foo": "James Bond"}'|srs start --wait|jq -r ".output"|jq
