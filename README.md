@@ -1,13 +1,11 @@
 # Simplerubysteps
 
-Simplerubysteps simplifies the administration of AWS Step Functions with ruby (eventually - this is an early alpha version)
-
-This is software in the experimental stage and should not really be used by anyone. Be warned.
+Simplerubysteps makes it easy to manage AWS Step Functions with ruby (this is an early alpha version and should not really be used by anyone).
 
 ## Installation
 
-Prerequisites (for alpha version):
-* AWS CLI installed
+Prerequisites:
+* AWS CLI installed and configured (profiles)
 
 ## Usage
 

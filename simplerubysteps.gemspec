@@ -8,14 +8,14 @@ Gem::Specification.new do |spec|
   spec.authors = ["Christian Tschenett"]
   spec.email = ["simplerubysteps@furthermore.ch"]
 
-  spec.summary = %q{simplerubysteps makes it easy to manage AWS Step Functions with ruby (eventually - this is an early alpha version and should not really be used by everyone).}
+  spec.summary = %q{simplerubysteps makes it easy to manage AWS Step Functions with ruby (this is an early alpha version and should not really be used by anyone).}
 
   spec.homepage = "https://github.com/chtz/simplerubysteps"
   spec.license = "MIT"
 
-  spec.files = Dir.chdir(File.expand_path("..", __FILE__)) do
-    `git ls-files -z`.split("\x0").reject { |f| f.match(%r{^(test|spec|features)/}) }
-  end
+  spec.files = Dir.glob("lib/**/*.rb") + %w[lib/statemachine.yaml exe/simplerubysteps README.md Rakefile simplerubysteps.gemspec]
+
+  puts spec.files # DEBUG
 
   spec.bindir = "exe"
   spec.executables = spec.files.grep(%r{^exe/}) { |f| File.basename(f) }

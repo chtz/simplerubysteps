@@ -1,3 +1,4 @@
+require "simplerubysteps/version"
 require "aws-sdk-cloudformation"
 require "aws-sdk-s3"
 require "aws-sdk-states"
@@ -160,7 +161,7 @@ def workflow_files
 end
 
 def my_lib_files
-  dir_files File.dirname(__FILE__), "**/*.rb"
+  files = dir_files(File.dirname(__FILE__), "**/*.rb").filter { |f| not(f =~ /tool.rb/) }
 end
 
 def cloudformation_template
@@ -403,7 +404,7 @@ subcommands = {
 }
 
 global = OptionParser.new do |opts|
-  opts.banner = "Usage: #{$0} [command] [options]"
+  opts.banner = "Usage (#{Simplerubysteps::VERSION}) : #{$0} [command] [options]"
   opts.separator ""
   opts.separator "Commands:"
   opts.separator "    deploy        Create Step Functions State Machine"

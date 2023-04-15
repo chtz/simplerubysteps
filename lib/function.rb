@@ -1,5 +1,8 @@
-require "json"
+require "simplerubysteps"
+
 require "./workflow.rb"
+
+include Simplerubysteps
 
 def handler(event:, context:)
   puts ENV.inspect if ENV["DEBUG"]
