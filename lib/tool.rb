@@ -22,71 +22,36 @@ def stack_outputs(stack_name)
   end
 end
 
-def stack_create(stack_name, template)
-  response = $cloudformation_client.create_stack(
+def stack_params(stack_name, template, parameters)
+  params = {
     stack_name: stack_name,
     template_body: template,
     capabilities: ["CAPABILITY_IAM", "CAPABILITY_NAMED_IAM"],
-    parameters: [
-      {
-        parameter_key: "DeployLambda",
-        parameter_value: "no",
-      },
-      {
-        parameter_key: "DeployStepfunctions",
-        parameter_value: "no",
-      },
-      {
-        parameter_key: "LambdaS3",
-        parameter_value: "",
-      },
-      {
-        parameter_key: "StepFunctionsS3",
-        parameter_value: "",
-      },
-      {
-        parameter_key: "StateMachineType",
-        parameter_value: "",
-      },
-    ],
-  )
-  $cloudformation_client.wait_until(:stack_create_complete, stack_name: stack_name)
+    parameters: [],
+  }
+  parameters.each do |k, v|
+    params[:parameters].push({
+      parameter_key: k,
+      parameter_value: v,
+    })
+  end
+  params
 end
 
-def stack_update(stack_name, template, deploy_lambda, deploy_stepfunctions, lambda_zip_s3_objectname, stepfunctions_json_s3_objetname, statemachine_type)
+def stack_create(stack_name, template, parameters)
+  $cloudformation_client.create_stack(stack_params(stack_name, template, parameters))
+  $cloudformation_client.wait_until(:stack_create_complete, stack_name: stack_name)
+  stack_outputs(stack_name)
+end
+
+def stack_update(stack_name, template, parameters)
   begin
-    response = $cloudformation_client.update_stack(
-      stack_name: stack_name,
-      template_body: template,
-      capabilities: ["CAPABILITY_IAM", "CAPABILITY_NAMED_IAM"],
-      parameters: [
-        {
-          parameter_key: "DeployLambda",
-          parameter_value: deploy_lambda ? "yes" : "no",
-        },
-        {
-          parameter_key: "DeployStepfunctions",
-          parameter_value: deploy_stepfunctions ? "yes" : "no",
-        },
-        {
-          parameter_key: "LambdaS3",
-          parameter_value: lambda_zip_s3_objectname,
-        },
-        {
-          parameter_key: "StepFunctionsS3",
-          parameter_value: stepfunctions_json_s3_objetname,
-        },
-        {
-          parameter_key: "StateMachineType",
-          parameter_value: statemachine_type,
-        },
-      ],
-    )
+    $cloudformation_client.update_stack(stack_params(stack_name, template, parameters))
     $cloudformation_client.wait_until(:stack_update_complete, stack_name: stack_name)
   rescue Aws::CloudFormation::Errors::ServiceError => error
-    return nil if error.message =~ /No updates are to be performed/
-    raise error
+    raise error unless error.message =~ /No updates are to be performed/
   end
+  stack_outputs(stack_name)
 end
 
 def create_zip(zip_file, files_by_name)
@@ -146,8 +111,13 @@ end
 current_stack_outputs = stack_outputs(stack_name_from_current_dir)
 
 unless current_stack_outputs
-  stack_create stack_name_from_current_dir, cloudformation_template
-  current_stack_outputs = stack_outputs(stack_name_from_current_dir)
+  current_stack_outputs = stack_create(stack_name_from_current_dir, cloudformation_template, {
+    "DeployLambda" => "no",
+    "DeployStepfunctions" => "no",
+    "LambdaS3" => "",
+    "StepFunctionsS3" => "",
+    "StateMachineType" => "",
+  })
 
   puts "Deployment bucket created"
 end
@@ -163,8 +133,13 @@ upload_file_to_s3 deploy_bucket, UPLOADED_LAMBDA_ZIP, function_zip_temp.path
 puts "Uploaded: #{UPLOADED_LAMBDA_ZIP}"
 
 unless current_stack_outputs["LambdaFunctionARN"]
-  stack_update stack_name_from_current_dir, cloudformation_template, true, false, UPLOADED_LAMBDA_ZIP, "", ""
-  current_stack_outputs = stack_outputs(stack_name_from_current_dir)
+  current_stack_outputs = stack_update(stack_name_from_current_dir, cloudformation_template, {
+    "DeployLambda" => "yes",
+    "DeployStepfunctions" => "no",
+    "LambdaS3" => UPLOADED_LAMBDA_ZIP,
+    "StepFunctionsS3" => "",
+    "StateMachineType" => "",
+  })
 
   puts "Lambda function created"
 end
@@ -180,10 +155,14 @@ UPLOADED_STATE_MACHINE_JSON = "statemachine-#{STATE_MACHINE_JSON_SHA}.json"
 upload_to_s3 deploy_bucket, UPLOADED_STATE_MACHINE_JSON, state_machine_json
 puts "Uploaded: #{UPLOADED_STATE_MACHINE_JSON}"
 
-stack_id = stack_update stack_name_from_current_dir, cloudformation_template, true, true, UPLOADED_LAMBDA_ZIP, UPLOADED_STATE_MACHINE_JSON, WF_TYPE
+current_stack_outputs = stack_update(stack_name_from_current_dir, cloudformation_template, {
+  "DeployLambda" => "yes",
+  "DeployStepfunctions" => "yes",
+  "LambdaS3" => UPLOADED_LAMBDA_ZIP,
+  "StepFunctionsS3" => UPLOADED_STATE_MACHINE_JSON,
+  "StateMachineType" => WF_TYPE,
+})
 
-if stack_id
-  puts "Stack updated"
-else
-  puts "No stack changes"
-end
+# FIXME indicate updated yes/no
+
+puts "State machine: #{current_stack_outputs["StepFunctionsStateMachineARN"]}"
