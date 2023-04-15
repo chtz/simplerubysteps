@@ -72,6 +72,12 @@ def upload_file_to_s3(bucket, key, file_path)
   end
 end
 
+def empty_s3_bucket(bucket_name)
+  $s3_client.list_objects_v2(bucket: bucket_name).contents.each do |object|
+    $s3_client.delete_object(bucket: bucket_name, key: object.key)
+  end
+end
+
 def create_zip(zip_file, files_by_name)
   Zip::File.open(zip_file, create: true) do |zipfile|
     base_dir = File.expand_path(File.dirname(__FILE__))
@@ -106,6 +112,21 @@ def cloudformation_template
   File.open("#{File.dirname(__FILE__)}/statemachine.yaml", "r") do |file|
     return file.read
   end
+end
+
+def destroy
+  current_stack_outputs = stack_outputs(stack_name_from_current_dir)
+  deploy_bucket = current_stack_outputs["DeployBucket"]
+  rause "No CloudFormation stack to destroy" unless deploy_bucket
+
+  empty_s3_bucket deploy_bucket
+
+  puts "Bucket emptied: #{deploy_bucket}"
+
+  $cloudformation_client.delete_stack(stack_name: stack_name_from_current_dir)
+  $cloudformation_client.wait_until(:stack_delete_complete, stack_name: stack_name_from_current_dir)
+
+  puts "Stack deleted"
 end
 
 def deploy(workflow_type)
@@ -230,6 +251,17 @@ def start(workflow_type, wait = true, input = $stdin)
   end
 end
 
+def send_task_success(task_token, output = $stdin)
+  raise "No token" unless task_token
+
+  output_json = JSON.parse(output.read).to_json
+
+  puts $states_client.send_task_success(
+    task_token: task_token,
+    output: output_json,
+  ).to_json
+end
+
 options = {
   :workflow_type => "STANDARD",
   :wait => false,
@@ -243,6 +275,14 @@ subcommands = {
     opts.on("--type VALUE", "STANDARD (default) or EXPRESS") do |value|
       options[:workflow_type] = value
     end
+
+    opts.on("-h", "--help", "Display this help message") do
+      puts opts
+      exit
+    end
+  end,
+  "destroy" => OptionParser.new do |opts|
+    opts.banner = "Usage: #{$0} destroy [options]"
 
     opts.on("-h", "--help", "Display this help message") do
       puts opts
@@ -269,6 +309,23 @@ subcommands = {
       exit
     end
   end,
+
+  "task-success" => OptionParser.new do |opts|
+    opts.banner = "Usage: #{$0} task-success [options]"
+
+    opts.on("--input VALUE", "/path/to/file (STDIN will be used per default)") do |value|
+      options[:input] = File.new(value)
+    end
+
+    opts.on("--token VALUE", "The task token") do |value|
+      options[:token] = value
+    end
+
+    opts.on("-h", "--help", "Display this help message") do
+      puts opts
+      exit
+    end
+  end,
 }
 
 global = OptionParser.new do |opts|
@@ -276,7 +333,9 @@ global = OptionParser.new do |opts|
   opts.separator ""
   opts.separator "Commands:"
   opts.separator "    deploy        Create Step Functions State Machine"
+  opts.separator "    destroy       Delete Step Functions State Machine"
   opts.separator "    start         Start State Machine execution"
+  opts.separator "    task-success  Continue Start State Machine execution"
   opts.separator ""
 
   opts.on_tail("-h", "--help", "Display this help message") do
@@ -305,4 +364,8 @@ if options[:command] == "deploy"
   deploy options[:workflow_type]
 elsif options[:command] == "start"
   start options[:workflow_type], options[:wait], options[:input]
+elsif options[:command] == "task-success"
+  send_task_success options[:token], options[:input]
+elsif options[:command] == "destroy"
+  destroy
 end
