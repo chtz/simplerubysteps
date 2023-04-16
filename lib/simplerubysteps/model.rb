@@ -37,7 +37,10 @@ module Simplerubysteps
       states.each do |name, state|
         if state.is_a? Task or state.is_a? Callback
           data.push({
-            task: name,
+            env: {
+              task: name,
+            },
+            iam_permissions: state.iam_permissions,
           })
         end
       end
@@ -77,6 +80,8 @@ module Simplerubysteps
   end
 
   class Task < State
+    attr_accessor :iam_permissions
+
     def initialize(name)
       super
       @dict[:Type] = "Task"
@@ -115,6 +120,8 @@ module Simplerubysteps
   end
 
   class Callback < State
+    attr_accessor :iam_permissions
+
     def initialize(name)
       super
       @dict[:Type] = "Task"

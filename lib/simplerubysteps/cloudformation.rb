@@ -38,8 +38,8 @@ Resources:
       Runtime: ruby2.7
       Environment:
         Variables:
-<% resource.each do |k, v| %>        
-          <%= k %>: <%= v %>
+<% resource["env"].each do |k, v| %>        
+          <%= k %>: <%= v.inspect %>
 <% end %>
   LogGroup<%= index %>:
     Type: AWS::Logs::LogGroup
@@ -68,6 +68,15 @@ Resources:
                   - logs:CreateLogStream
                   - logs:PutLogEvents
                 Resource: arn:aws:logs:*:*:*
+<% if resource["iam_permissions"] %>
+  MyCustomPolicy<%= index %>:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Ref LambdaFunction<%= index %>
+      Roles:
+        - !Ref MyLambdaRole<%= index %>
+      PolicyDocument: <%= resource["iam_permissions"].inspect %>
+<% end %>
 <% end %>
 <% end %>
   

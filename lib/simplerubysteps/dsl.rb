@@ -55,6 +55,10 @@ module Simplerubysteps
     choice.default = state
   end
 
+  def iam_permissions(permissions)
+    $tasks.last.iam_permissions = permissions
+  end
+
   def choice(name)
     t = $sm.add Choice.new(name)
 
