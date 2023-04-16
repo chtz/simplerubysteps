@@ -302,7 +302,7 @@ module Simplerubysteps
 
       lambda_cf_config = JSON.parse(`ruby -e 'require "./workflow.rb";puts $sm.cloudformation_config.to_json'`)
 
-      if current_stack_outputs["LambdaCount"].nil? or current_stack_outputs["LambdaCount"].to_i != lambda_cf_config.length # FIXME better change detector like lambda_cf_config hash?
+      if current_stack_outputs["LambdaCount"].nil? or current_stack_outputs["LambdaCount"].to_i != lambda_cf_config.length # FIXME Do not implicitly delete the state machine when versioning is turned off.
         current_stack_outputs = stack_update(versioned_stack_name_from_current_dir, cloudformation_template(lambda_cf_config, false), {
           "LambdaS3" => lambda_zip_name,
         })
@@ -328,7 +328,7 @@ module Simplerubysteps
 
       puts "Uploaded: #{state_machine_json_name}"
 
-      current_stack_outputs = stack_update(versioned_stack_name_from_current_dir, cloudformation_template(lambda_cf_config, true), {
+      current_stack_outputs = stack_update(versioned_stack_name_from_current_dir, cloudformation_template(lambda_cf_config, true), { # FIXME when versioning is turned off: 1) create additional lambdas 2) update State Machine
         "LambdaS3" => lambda_zip_name,
         "StepFunctionsS3" => state_machine_json_name,
         "StateMachineType" => workflow_type,
