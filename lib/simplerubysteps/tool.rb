@@ -226,8 +226,12 @@ module Simplerubysteps
       Digest::SHA1.hexdigest file_hashes.join(",")
     end
 
-    def versioned_stack_name_from_current_dir
-      "#{unversioned_stack_name_from_current_dir}-#{workflow_files_hash()[0...8]}"
+    def versioned_stack_name_from_current_dir(version)
+      if version
+        "#{unversioned_stack_name_from_current_dir}-#{version}"
+      else
+        "#{unversioned_stack_name_from_current_dir}-#{workflow_files_hash()[0...8]}"
+      end
     end
 
     def my_lib_files
@@ -246,11 +250,17 @@ module Simplerubysteps
       Simplerubysteps::cloudformation_yaml(data)
     end
 
-    def log(extract_pattern = nil)
-      stack = most_recent_stack_with_prefix unversioned_stack_name_from_current_dir
+    def log(extract_pattern, version)
+      stack = nil
+      if version
+        stack = versioned_stack_name_from_current_dir(version)
+      else
+        stack = most_recent_stack_with_prefix unversioned_stack_name_from_current_dir
+      end
       raise "State Machine is not deployed" unless stack
 
       current_stack_outputs = stack_outputs(stack)
+      raise "State Machine is not deployed" unless current_stack_outputs
 
       last_thread = nil
       (0..current_stack_outputs["LambdaCount"].to_i - 1).each do |i|
@@ -279,11 +289,11 @@ module Simplerubysteps
       end
     end
 
-    def deploy
-      current_stack_outputs = stack_outputs(versioned_stack_name_from_current_dir)
+    def deploy(version)
+      current_stack_outputs = stack_outputs(versioned_stack_name_from_current_dir(version))
 
       unless current_stack_outputs
-        current_stack_outputs = stack_create(versioned_stack_name_from_current_dir, cloudformation_template(nil, false), {})
+        current_stack_outputs = stack_create(versioned_stack_name_from_current_dir(version), cloudformation_template(nil, false), {})
 
         puts "Deployment bucket created"
       end
@@ -303,7 +313,7 @@ module Simplerubysteps
       lambda_cf_config = JSON.parse(`ruby -e 'require "./workflow.rb";puts $sm.cloudformation_config.to_json'`)
 
       if current_stack_outputs["LambdaCount"].nil? or current_stack_outputs["LambdaCount"].to_i != lambda_cf_config.length # FIXME Do not implicitly delete the state machine when versioning is turned off.
-        current_stack_outputs = stack_update(versioned_stack_name_from_current_dir, cloudformation_template(lambda_cf_config, false), {
+        current_stack_outputs = stack_update(versioned_stack_name_from_current_dir(version), cloudformation_template(lambda_cf_config, false), {
           "LambdaS3" => lambda_zip_name,
         })
 
@@ -328,7 +338,7 @@ module Simplerubysteps
 
       puts "Uploaded: #{state_machine_json_name}"
 
-      current_stack_outputs = stack_update(versioned_stack_name_from_current_dir, cloudformation_template(lambda_cf_config, true), { # FIXME when versioning is turned off: 1) create additional lambdas 2) update State Machine
+      current_stack_outputs = stack_update(versioned_stack_name_from_current_dir(version), cloudformation_template(lambda_cf_config, true), { # FIXME when versioning is turned off: 1) create additional lambdas 2) update State Machine
         "LambdaS3" => lambda_zip_name,
         "StepFunctionsS3" => state_machine_json_name,
         "StateMachineType" => workflow_type,
@@ -378,11 +388,18 @@ module Simplerubysteps
       response
     end
 
-    def start(wait = true, input = $stdin)
-      stack = most_recent_stack_with_prefix unversioned_stack_name_from_current_dir
+    def start(wait, input, version)
+      stack = nil
+      if version
+        stack = versioned_stack_name_from_current_dir(version)
+      else
+        stack = most_recent_stack_with_prefix unversioned_stack_name_from_current_dir
+      end
       raise "State Machine is not deployed" unless stack
 
       current_stack_outputs = stack_outputs(stack)
+      raise "State Machine is not deployed" unless current_stack_outputs
+
       state_machine_arn = current_stack_outputs["StepFunctionsStateMachineARN"]
 
       input_json = JSON.parse(input.read).to_json
@@ -425,6 +442,10 @@ module Simplerubysteps
         "deploy" => OptionParser.new do |opts|
           opts.banner = "Usage: #{$0} deploy [options]"
 
+          opts.on("--version VALUE", "fix version (hash of sources by default)") do |value|
+            options[:version] = value
+          end
+
           opts.on("-h", "--help", "Display this help message") do
             puts opts
             exit
@@ -445,6 +466,10 @@ module Simplerubysteps
             options[:extract_pattern] = value
           end
 
+          opts.on("--version VALUE", "fix version (latest by default)") do |value|
+            options[:version] = value
+          end
+
           opts.on("-h", "--help", "Display this help message") do
             puts opts
             exit
@@ -459,6 +484,10 @@ module Simplerubysteps
 
           opts.on("--input VALUE", "/path/to/file (STDIN will be used per default)") do |value|
             options[:input] = File.new(value)
+          end
+
+          opts.on("--version VALUE", "fix version (latest by default)") do |value|
+            options[:version] = value
           end
 
           opts.on("-h", "--help", "Display this help message") do
@@ -518,11 +547,11 @@ module Simplerubysteps
       end
 
       if options[:command] == "deploy"
-        deploy
+        deploy options[:version]
       elsif options[:command] == "start"
-        start options[:wait], options[:input]
+        start options[:wait], options[:input], options[:version]
       elsif options[:command] == "log"
-        log options[:extract_pattern]
+        log options[:extract_pattern], options[:version]
       elsif options[:command] == "task-success"
         send_task_success options[:token], options[:input]
       elsif options[:command] == "destroy"
