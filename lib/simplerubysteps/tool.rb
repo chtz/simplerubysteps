@@ -21,7 +21,7 @@ module Simplerubysteps
       @logs_client = Aws::CloudWatchLogs::Client.new
     end
 
-    def tail_follow_logs(log_group_name, extract_pattern = nil) # FIXME too hacky and not really working
+    def tail_follow_logs(log_group_name, extract_pattern = nil) # FIXME too hacky
       Signal.trap("INT") do
         exit
       end
@@ -120,6 +120,58 @@ module Simplerubysteps
       end
     end
 
+    def list_stacks_with_prefix(prefix)
+      stack_list = []
+      next_token = nil
+      loop do
+        response = @cloudformation_client.list_stacks({
+          next_token: next_token,
+          stack_status_filter: %w[
+            CREATE_COMPLETE
+            UPDATE_COMPLETE
+            ROLLBACK_COMPLETE
+          ],
+        })
+
+        response.stack_summaries.each do |stack|
+          if stack.stack_name.start_with?(prefix)
+            stack_list << stack.stack_name
+          end
+        end
+
+        next_token = response.next_token
+        break if next_token.nil?
+      end
+
+      stack_list
+    end
+
+    def most_recent_stack_with_prefix(prefix)
+      stack_list = {}
+      next_token = nil
+      loop do
+        response = @cloudformation_client.list_stacks({
+          next_token: next_token,
+          stack_status_filter: %w[
+            CREATE_COMPLETE
+            UPDATE_COMPLETE
+            ROLLBACK_COMPLETE
+          ],
+        })
+
+        response.stack_summaries.each do |stack|
+          if stack.stack_name.start_with?(prefix)
+            stack_list[stack.creation_time] = stack.stack_name
+          end
+        end
+
+        next_token = response.next_token
+        break if next_token.nil?
+      end
+
+      stack_list.empty? ? nil : stack_list[stack_list.keys.sort.last]
+    end
+
     def upload_to_s3(bucket, key, body)
       @s3_client.put_object(
         bucket: bucket,
@@ -158,12 +210,24 @@ module Simplerubysteps
       files_by_name
     end
 
-    def stack_name_from_current_dir
+    def unversioned_stack_name_from_current_dir
       File.basename(File.expand_path("."))
     end
 
     def workflow_files
       dir_files ".", "**/*.rb"
+    end
+
+    def workflow_files_hash
+      file_hashes = []
+      workflow_files.each do |name, file|
+        file_hashes.push Digest::SHA1.file(file)
+      end
+      Digest::SHA1.hexdigest file_hashes.join(",")
+    end
+
+    def versioned_stack_name_from_current_dir
+      "#{unversioned_stack_name_from_current_dir}-#{workflow_files_hash()[0...8]}"
     end
 
     def my_lib_files
@@ -183,8 +247,10 @@ module Simplerubysteps
     end
 
     def log(extract_pattern = nil)
-      current_stack_outputs = stack_outputs(stack_name_from_current_dir)
-      raise "State Machine is not deployed" unless current_stack_outputs
+      stack = most_recent_stack_with_prefix "#{unversioned_stack_name_from_current_dir}-"
+      raise "State Machine is not deployed" unless stack
+
+      current_stack_outputs = stack_outputs(stack)
 
       last_thread = nil
       (0..current_stack_outputs["LambdaCount"].to_i - 1).each do |i|
@@ -197,25 +263,27 @@ module Simplerubysteps
     end
 
     def destroy
-      current_stack_outputs = stack_outputs(stack_name_from_current_dir)
-      deploy_bucket = current_stack_outputs["DeployBucket"]
-      rause "No CloudFormation stack to destroy" unless deploy_bucket
+      list_stacks_with_prefix("#{unversioned_stack_name_from_current_dir}-").each do |stack|
+        current_stack_outputs = stack_outputs(stack)
+        deploy_bucket = current_stack_outputs["DeployBucket"]
+        rause "No CloudFormation stack to destroy" unless deploy_bucket
 
-      empty_s3_bucket deploy_bucket
+        empty_s3_bucket deploy_bucket
 
-      puts "Bucket emptied: #{deploy_bucket}"
+        puts "Bucket emptied: #{deploy_bucket}"
 
-      @cloudformation_client.delete_stack(stack_name: stack_name_from_current_dir)
-      @cloudformation_client.wait_until(:stack_delete_complete, stack_name: stack_name_from_current_dir)
+        @cloudformation_client.delete_stack(stack_name: stack)
+        @cloudformation_client.wait_until(:stack_delete_complete, stack_name: stack)
 
-      puts "Stack deleted"
+        puts "Stack deleted: #{stack}"
+      end
     end
 
     def deploy
-      current_stack_outputs = stack_outputs(stack_name_from_current_dir)
+      current_stack_outputs = stack_outputs(versioned_stack_name_from_current_dir)
 
       unless current_stack_outputs
-        current_stack_outputs = stack_create(stack_name_from_current_dir, cloudformation_template(nil, false), {})
+        current_stack_outputs = stack_create(versioned_stack_name_from_current_dir, cloudformation_template(nil, false), {})
 
         puts "Deployment bucket created"
       end
@@ -235,7 +303,7 @@ module Simplerubysteps
       lambda_cf_config = JSON.parse(`ruby -e 'require "./workflow.rb";puts $sm.cloudformation_config.to_json'`)
 
       if current_stack_outputs["LambdaCount"].nil? or current_stack_outputs["LambdaCount"].to_i != lambda_cf_config.length # FIXME better change detector like lambda_cf_config hash?
-        current_stack_outputs = stack_update(stack_name_from_current_dir, cloudformation_template(lambda_cf_config, false), {
+        current_stack_outputs = stack_update(versioned_stack_name_from_current_dir, cloudformation_template(lambda_cf_config, false), {
           "LambdaS3" => lambda_zip_name,
         })
 
@@ -260,7 +328,7 @@ module Simplerubysteps
 
       puts "Uploaded: #{state_machine_json_name}"
 
-      current_stack_outputs = stack_update(stack_name_from_current_dir, cloudformation_template(lambda_cf_config, true), {
+      current_stack_outputs = stack_update(versioned_stack_name_from_current_dir, cloudformation_template(lambda_cf_config, true), {
         "LambdaS3" => lambda_zip_name,
         "StepFunctionsS3" => state_machine_json_name,
         "StateMachineType" => workflow_type,
@@ -311,8 +379,10 @@ module Simplerubysteps
     end
 
     def start(wait = true, input = $stdin)
-      current_stack_outputs = stack_outputs(stack_name_from_current_dir)
-      raise "State Machine is not deployed" unless current_stack_outputs
+      stack = most_recent_stack_with_prefix "#{unversioned_stack_name_from_current_dir}-"
+      raise "State Machine is not deployed" unless stack
+
+      current_stack_outputs = stack_outputs(stack)
       state_machine_arn = current_stack_outputs["StepFunctionsStateMachineARN"]
 
       input_json = JSON.parse(input.read).to_json
