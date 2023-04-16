@@ -272,28 +272,42 @@ module Simplerubysteps
       last_thread.join if last_thread
     end
 
-    def destroy
-      list_stacks_with_prefix(unversioned_stack_name_from_current_dir).each do |stack|
-        current_stack_outputs = stack_outputs(stack)
-        deploy_bucket = current_stack_outputs["DeployBucket"]
-        rause "No CloudFormation stack to destroy" unless deploy_bucket
+    def destroy_stack(stack)
+      current_stack_outputs = stack_outputs(stack)
+      raise "No CloudFormation stack to destroy" unless current_stack_outputs
 
-        empty_s3_bucket deploy_bucket
+      deploy_bucket = current_stack_outputs["DeployBucket"]
+      raise "No CloudFormation stack to destroy" unless deploy_bucket
 
-        puts "Bucket emptied: #{deploy_bucket}"
+      empty_s3_bucket deploy_bucket
 
-        @cloudformation_client.delete_stack(stack_name: stack)
-        @cloudformation_client.wait_until(:stack_delete_complete, stack_name: stack)
+      puts "Bucket emptied: #{deploy_bucket}"
 
-        puts "Stack deleted: #{stack}"
+      @cloudformation_client.delete_stack(stack_name: stack)
+      @cloudformation_client.wait_until(:stack_delete_complete, stack_name: stack)
+
+      puts "Stack deleted: #{stack}"
+    end
+
+    def destroy(optional_version)
+      if optional_version
+        destroy_stack versioned_stack_name_from_current_dir(optional_version)
+      else
+        list_stacks_with_prefix(unversioned_stack_name_from_current_dir).each do |stack|
+          destroy_stack stack
+        end
       end
     end
 
     def deploy(version)
-      current_stack_outputs = stack_outputs(versioned_stack_name_from_current_dir(version))
+      stack = versioned_stack_name_from_current_dir(version)
+
+      puts "Stack: #{stack}"
+
+      current_stack_outputs = stack_outputs(stack)
 
       unless current_stack_outputs
-        current_stack_outputs = stack_create(versioned_stack_name_from_current_dir(version), cloudformation_template(nil, false), {})
+        current_stack_outputs = stack_create(stack, cloudformation_template(nil, false), {})
 
         puts "Deployment bucket created"
       end
@@ -313,7 +327,7 @@ module Simplerubysteps
       lambda_cf_config = JSON.parse(`ruby -e 'require "./workflow.rb";puts $sm.cloudformation_config.to_json'`)
 
       if current_stack_outputs["LambdaCount"].nil? or current_stack_outputs["LambdaCount"].to_i != lambda_cf_config.length # FIXME Do not implicitly delete the state machine when versioning is turned off.
-        current_stack_outputs = stack_update(versioned_stack_name_from_current_dir(version), cloudformation_template(lambda_cf_config, false), {
+        current_stack_outputs = stack_update(stack, cloudformation_template(lambda_cf_config, false), {
           "LambdaS3" => lambda_zip_name,
         })
 
@@ -338,7 +352,7 @@ module Simplerubysteps
 
       puts "Uploaded: #{state_machine_json_name}"
 
-      current_stack_outputs = stack_update(versioned_stack_name_from_current_dir(version), cloudformation_template(lambda_cf_config, true), { # FIXME when versioning is turned off: 1) create additional lambdas 2) update State Machine
+      current_stack_outputs = stack_update(stack, cloudformation_template(lambda_cf_config, true), { # FIXME when versioning is turned off: 1) create additional lambdas 2) update State Machine
         "LambdaS3" => lambda_zip_name,
         "StepFunctionsS3" => state_machine_json_name,
         "StateMachineType" => workflow_type,
@@ -436,14 +450,20 @@ module Simplerubysteps
       options = {
         :wait => false,
         :input => $stdin,
+        :version => "latest",
+        :destroy_all => true,
       }
 
       subcommands = {
         "deploy" => OptionParser.new do |opts|
           opts.banner = "Usage: #{$0} deploy [options]"
 
-          opts.on("--version VALUE", "fix version (hash of sources by default)") do |value|
+          opts.on("--version VALUE", "fix version (\"latest\" per default)") do |value|
             options[:version] = value
+          end
+
+          opts.on("--versioned", "enable auto versioning (\"latest\" per default)") do |value|
+            options[:version] = nil
           end
 
           opts.on("-h", "--help", "Display this help message") do
@@ -453,6 +473,11 @@ module Simplerubysteps
         end,
         "destroy" => OptionParser.new do |opts|
           opts.banner = "Usage: #{$0} destroy [options]"
+
+          opts.on("--version VALUE", "fix version (all versions per default)") do |value|
+            options[:version] = value
+            options[:destroy_all] = nil
+          end
 
           opts.on("-h", "--help", "Display this help message") do
             puts opts
@@ -466,8 +491,12 @@ module Simplerubysteps
             options[:extract_pattern] = value
           end
 
-          opts.on("--version VALUE", "fix version (latest by default)") do |value|
+          opts.on("--version VALUE", "fix version (\"latest\" per default)") do |value|
             options[:version] = value
+          end
+
+          opts.on("--most-recent-version", "Use the version of the last stack created") do |value|
+            options[:version] = nil
           end
 
           opts.on("-h", "--help", "Display this help message") do
@@ -486,8 +515,12 @@ module Simplerubysteps
             options[:input] = File.new(value)
           end
 
-          opts.on("--version VALUE", "fix version (latest by default)") do |value|
+          opts.on("--version VALUE", "fix version (\"latest\" per default)") do |value|
             options[:version] = value
+          end
+
+          opts.on("--most-recent-version", "Use the version of the last stack created") do |value|
+            options[:version] = nil
           end
 
           opts.on("-h", "--help", "Display this help message") do
@@ -555,7 +588,11 @@ module Simplerubysteps
       elsif options[:command] == "task-success"
         send_task_success options[:token], options[:input]
       elsif options[:command] == "destroy"
-        destroy
+        if options[:destroy_all]
+          destroy(nil)
+        else
+          destroy(options[:version])
+        end
       end
     end
   end

@@ -6,7 +6,7 @@ include Simplerubysteps
 task :t1 do
   action do |input|
     puts "Task t1: #{input}"
-    input.merge({ "t1" => "executed", "is_wick" => (input["foo"] == "John Wick" ? "ja" : "nein") })
+    input.merge({ "t1" => "done", "is_wick" => (input["foo"] == "John Wick" ? "ja" : "nein") })
   end
 
   choice :t2 do
@@ -24,7 +24,7 @@ task :t1 do
       task :t4 do
         action do |input|
           puts "Task t4: #{input}"
-          input.merge({ "t4": "executed" })
+          input.merge({ "t4": "done" })
         end
       end
     end
@@ -34,6 +34,6 @@ end
 task :t5 do
   action do |input|
     puts "Task t5: #{input}"
-    input.merge({ "t5" => "executed" })
+    input.merge({ "t5" => "done" })
   end
 end
