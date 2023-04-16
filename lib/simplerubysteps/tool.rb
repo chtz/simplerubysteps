@@ -402,6 +402,25 @@ module Simplerubysteps
       response
     end
 
+    def stack_output(version, optional_output)
+      stack = nil
+      if version
+        stack = versioned_stack_name_from_current_dir(version)
+      else
+        stack = most_recent_stack_with_prefix unversioned_stack_name_from_current_dir
+      end
+      raise "State Machine is not deployed" unless stack
+
+      current_stack_outputs = stack_outputs(stack)
+      raise "State Machine is not deployed" unless current_stack_outputs
+
+      if optional_output
+        puts current_stack_outputs[optional_output]
+      else
+        puts current_stack_outputs.to_json
+      end
+    end
+
     def start(wait, input, version)
       stack = nil
       if version
@@ -544,6 +563,22 @@ module Simplerubysteps
             exit
           end
         end,
+        "stack" => OptionParser.new do |opts|
+          opts.banner = "Usage: #{$0} stack [options]"
+
+          opts.on("--output VALUE", "Stack output") do |value|
+            options[:output] = value
+          end
+
+          opts.on("--version VALUE", "fix version (\"latest\" per default)") do |value|
+            options[:version] = value
+          end
+
+          opts.on("-h", "--help", "Display this help message") do
+            puts opts
+            exit
+          end
+        end,
       }
 
       global = OptionParser.new do |opts|
@@ -587,6 +622,8 @@ module Simplerubysteps
         log options[:extract_pattern], options[:version]
       elsif options[:command] == "task-success"
         send_task_success options[:token], options[:input]
+      elsif options[:command] == "stack"
+        stack_output options[:version], options[:output]
       elsif options[:command] == "destroy"
         if options[:destroy_all]
           destroy(nil)

@@ -28,6 +28,23 @@ module Simplerubysteps
     $tasks.pop
   end
 
+  def sqs_callback(name)
+    t = $sm.add Callback.new(name)
+    t.queue = true
+
+    $tasks.last.next = t if $tasks.last
+
+    $tasks.push t
+    action do |input, token, queue_client|
+      queue_client.send({
+        input: input,
+        token: token,
+      })
+    end
+    yield if block_given?
+    $tasks.pop
+  end
+
   def action(&action_block)
     $tasks.last.action &action_block
   end

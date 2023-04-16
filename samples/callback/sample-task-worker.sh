@@ -1,5 +1,10 @@
 #!/bin/bash
 
-TOKEN=$(simplerubysteps log --extract_pattern 'callback_token=(.+)')
+QUEUE=$(srs stack --output t1Queue)
 
-echo '{"willo":"billo"}'|srs task-success --token $TOKEN
+MESSAGE=$(./wait-for-sqs-message.rb $QUEUE)
+
+INPUT=$(echo "$MESSAGE" | jq -r ".input")
+TOKEN=$(echo "$MESSAGE" | jq -r ".token")
+
+echo "$INPUT"|srs task-success --token "$TOKEN"

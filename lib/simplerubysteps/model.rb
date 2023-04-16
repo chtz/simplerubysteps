@@ -41,6 +41,7 @@ module Simplerubysteps
               task: name,
             },
             iam_permissions: state.iam_permissions,
+            queue: ((state.is_a? Callback) ? state.queue : nil),
           })
         end
       end
@@ -121,6 +122,7 @@ module Simplerubysteps
 
   class Callback < State
     attr_accessor :iam_permissions
+    attr_accessor :queue
 
     def initialize(name)
       super
@@ -142,6 +144,10 @@ module Simplerubysteps
 
     def perform_action(input, token)
       @action_block.call(input, token) if @action_block
+    end
+
+    def perform_queue_action(input, token, queue_client)
+      @action_block.call(input, token, queue_client) if @action_block
     end
   end
 

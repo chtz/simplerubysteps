@@ -38,6 +38,9 @@ Resources:
       Runtime: ruby2.7
       Environment:
         Variables:
+<% if resource["queue"] %>
+          QUEUE: !Ref MyQueue<%= index %>        
+<% end %>          
 <% resource["env"].each do |k, v| %>        
           <%= k %>: <%= v.inspect %>
 <% end %>
@@ -72,10 +75,27 @@ Resources:
   MyCustomPolicy<%= index %>:
     Type: AWS::IAM::Policy
     Properties:
-      PolicyName: !Ref LambdaFunction<%= index %>
+      PolicyName: custom
       Roles:
         - !Ref MyLambdaRole<%= index %>
       PolicyDocument: <%= resource["iam_permissions"].inspect %>
+<% end %>
+<% if resource["queue"] %>
+  MyQueue<%= index %>:
+    Type: AWS::SQS::Queue
+  MyQueuePolicy<%= index %>:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: queue
+      Roles:
+        - !Ref MyLambdaRole<%= index %>
+      PolicyDocument: 
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - 'sqs:SendMessage'
+            Resource: !GetAtt MyQueue<%= index %>.Arn
 <% end %>
 <% end %>
 <% end %>
@@ -144,6 +164,16 @@ Outputs:
   StepFunctionsRoleARN:
     Value: !GetAtt StepFunctionsRole.Arn
 <% end %>    
+
+<% if resources[:functions] %>
+<% resources[:functions].each_with_index do |resource, index| %>
+<% if resource["queue"] %>
+  <%= resource["env"]["task"] %>Queue:
+    Value: !Ref MyQueue<%= index %>
+<% end %>  
+<% end %>    
+<% end %>    
+
 YAML
 
   def self.cloudformation_yaml(resources)
