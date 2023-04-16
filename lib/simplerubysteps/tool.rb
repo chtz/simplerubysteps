@@ -134,7 +134,7 @@ module Simplerubysteps
         })
 
         response.stack_summaries.each do |stack|
-          if stack.stack_name.start_with?(prefix)
+          if stack.stack_name =~ /^#{prefix}$|^#{prefix}-(.+)/
             stack_list << stack.stack_name
           end
         end
@@ -160,7 +160,7 @@ module Simplerubysteps
         })
 
         response.stack_summaries.each do |stack|
-          if stack.stack_name.start_with?(prefix)
+          if stack.stack_name =~ /^#{prefix}$|^#{prefix}-(.+)/
             stack_list[stack.creation_time] = stack.stack_name
           end
         end
@@ -247,7 +247,7 @@ module Simplerubysteps
     end
 
     def log(extract_pattern = nil)
-      stack = most_recent_stack_with_prefix "#{unversioned_stack_name_from_current_dir}-"
+      stack = most_recent_stack_with_prefix unversioned_stack_name_from_current_dir
       raise "State Machine is not deployed" unless stack
 
       current_stack_outputs = stack_outputs(stack)
@@ -263,7 +263,7 @@ module Simplerubysteps
     end
 
     def destroy
-      list_stacks_with_prefix("#{unversioned_stack_name_from_current_dir}-").each do |stack|
+      list_stacks_with_prefix(unversioned_stack_name_from_current_dir).each do |stack|
         current_stack_outputs = stack_outputs(stack)
         deploy_bucket = current_stack_outputs["DeployBucket"]
         rause "No CloudFormation stack to destroy" unless deploy_bucket
@@ -379,7 +379,7 @@ module Simplerubysteps
     end
 
     def start(wait = true, input = $stdin)
-      stack = most_recent_stack_with_prefix "#{unversioned_stack_name_from_current_dir}-"
+      stack = most_recent_stack_with_prefix unversioned_stack_name_from_current_dir
       raise "State Machine is not deployed" unless stack
 
       current_stack_outputs = stack_outputs(stack)
