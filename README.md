@@ -1,6 +1,10 @@
 # Simplerubysteps
 
-Simplerubysteps makes it easy to manage AWS Step Functions with ruby (this is an early alpha version and should not really be used by anyone).
+Simplerubysteps makes it easy to manage AWS Step Functions with ruby.
+
+* Phase I (we are here): Experiment and explore. The aim is to explore the DSL capabilities and user experience of the automation tool. Things will work, but may change over time. The released gem versions of Simplerubysteps are early alpha versions and therefore should not be used by anyone in production.
+* Phase II: First release candidate
+* Phase III: Maintain and evolve
 
 ## Installation and Usage
 
