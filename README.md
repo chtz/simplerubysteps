@@ -18,8 +18,8 @@ gem install simplerubysteps
 ### Create an AWS Step Function State Machine with the simplerubysteps Ruby DSL
 
 ```
-mkdir -p samples/hello-world
-cd samples/hello-world
+mkdir -p samples/hello-world-2
+cd samples/hello-world-2
 
 vi workflow.rb
 ```
@@ -29,64 +29,62 @@ vi workflow.rb
 ```
 require "simplerubysteps"
 include Simplerubysteps
-
 kind "EXPRESS"
 
+GERMAN_WORDS = ["Hallo"]
+
+def is_german?(word)
+  GERMAN_WORDS.include? word
+end
+
 task :start do
-  transition_to :even do |data|
-    data["number"] % 2 == 0
+  transition_to :german do |data|
+    is_german? data["hello"]
   end
 
-  default_transition_to :odd
+  default_transition_to :english
 end
 
-task :even do
+task :german do
   action do |data|
-    number = data["number"]
-
-    puts "Just for the record, I've discovered an even number: #{number}"
-
-    {
-      result: "#{number} is even",
-    }
+    { hello_world: "#{data["hello"]} Welt!" }
   end
 end
 
-task :odd do
+task :english do
   action do |data|
-    {
-      result: "#{data["number"]} is odd",
-    }
+    { hello_world: "#{data["hello"]} World!" }
   end
 end
 ```
 
-### Deploy the Step Functions State Machine and the Lambda function that implements the Task Actions.
+### Deploy the Step Functions State Machine and the Lambda function that implements the Task Actions (with srs deploy)
 
 ```
 export AWS_PROFILE=<AWS CLI profile name with sufficient privileges>
-cd samples/hello-world
+cd samples/hello-world-2
 
 srs deploy
 ```
 
-### Trigger State Machine executions
+### Trigger State Machine executions (with srs start)
 
 ```
 export AWS_PROFILE=<AWS CLI profile name with sufficient privileges>
-cd samples/hello-world
+cd samples/hello-world-2
 
-echo "Enter a number"
-read NUMBER
+# Bellow: will print "Hello World!"
+echo '{"hello":"Hello"}'|srs start|jq -r ".output"|jq -r ".hello_world"
 
-echo "{\"number\":$NUMBER}" | srs start | jq -r ".output" | jq -r ".result"
-# Above: will print "123 is odd" for input "123"
+# Bellow: will print "Hallo Welt!"
+echo '{"hello":"Hallo"}'|srs start|jq -r ".output"|jq -r ".hello_world"
 ```
 
-### Delete CloudFormation stack
+### Delete CloudFormation stack (with srs destroy)
 
 ```
 export AWS_PROFILE=<AWS CLI profile name with sufficient privileges>
+cd samples/hello-world-2
 
 srs destroy
 ```

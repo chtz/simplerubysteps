@@ -66,8 +66,6 @@ module Simplerubysteps
         :Task => name,
         "Input.$" => "$",
       }
-
-      action { |input| input } # default: pass through
     end
 
     def action(&action_block)
@@ -75,7 +73,8 @@ module Simplerubysteps
     end
 
     def perform_action(input)
-      output = nil
+      output = input # default: pass through
+
       output = @action_block.call(input) if @action_block
 
       if @implicit_choice
