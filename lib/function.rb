@@ -10,8 +10,8 @@ def handler(event:, context:)
   puts context.inspect if ENV["DEBUG"]
 
   if event["Token"]
-    $sm.states[event["Task"].to_sym].perform_action event["Input"], event["Token"]
+    $sm.states[ENV["task"].to_sym].perform_action event["Input"], event["Token"]
   else
-    $sm.states[event["Task"].to_sym].perform_action event["Input"]
+    $sm.states[ENV["task"].to_sym].perform_action event["Input"]
   end
 end

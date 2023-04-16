@@ -13,7 +13,7 @@ Gem::Specification.new do |spec|
   spec.homepage = "https://github.com/chtz/simplerubysteps"
   spec.license = "MIT"
 
-  spec.files = Dir.glob("lib/**/*.rb") + %w[lib/simplerubysteps/statemachine.yaml exe/simplerubysteps exe/srs README.md Rakefile simplerubysteps.gemspec]
+  spec.files = Dir.glob("lib/**/*.rb") + %w[exe/simplerubysteps exe/srs README.md Rakefile simplerubysteps.gemspec]
 
   spec.bindir = "exe"
   spec.executables = spec.files.grep(%r{^exe/}) { |f| File.basename(f) }

@@ -1,4 +1,5 @@
 require "simplerubysteps/version"
+require "simplerubysteps/cloudformation"
 require "aws-sdk-cloudformation"
 require "aws-sdk-s3"
 require "aws-sdk-states"
@@ -9,6 +10,7 @@ require "json"
 require "optparse"
 require "aws-sdk-cloudwatchlogs"
 require "time"
+require "thread"
 
 module Simplerubysteps
   class Tool
@@ -165,21 +167,33 @@ module Simplerubysteps
     end
 
     def my_lib_files
-      files = dir_files(File.dirname(__FILE__) + "/..", "**/*.rb").filter { |f| not(f =~ /tool.rb/) }
+      files = dir_files(File.dirname(__FILE__) + "/..", "**/*.rb").filter { |f| not(f =~ /cloudformation\.rb|tool\.rb/) }
     end
 
-    def cloudformation_template
-      File.open("#{File.dirname(__FILE__)}/statemachine.yaml", "r") do |file|
-        return file.read
+    def cloudformation_template(lambda_cf_config, deploy_state_machine)
+      data = {
+        state_machine: deploy_state_machine,
+      }
+
+      if lambda_cf_config
+        data[:functions] = lambda_cf_config # see StateMachine.cloudformation_config()
       end
+
+      Simplerubysteps::cloudformation_yaml(data)
     end
 
     def log(extract_pattern = nil)
       current_stack_outputs = stack_outputs(stack_name_from_current_dir)
       raise "State Machine is not deployed" unless current_stack_outputs
-      function_name = current_stack_outputs["LambdaFunctionName"]
 
-      tail_follow_logs "/aws/lambda/#{function_name}", extract_pattern
+      last_thread = nil
+      (0..current_stack_outputs["LambdaCount"].to_i - 1).each do |i|
+        function_name = current_stack_outputs["LambdaFunctionName#{i}"]
+        last_thread = Thread.new do # FIXME Less brute force approach (?)
+          tail_follow_logs "/aws/lambda/#{function_name}", extract_pattern
+        end
+      end
+      last_thread.join if last_thread
     end
 
     def destroy
@@ -201,13 +215,7 @@ module Simplerubysteps
       current_stack_outputs = stack_outputs(stack_name_from_current_dir)
 
       unless current_stack_outputs
-        current_stack_outputs = stack_create(stack_name_from_current_dir, cloudformation_template, {
-          "DeployLambda" => "no",
-          "DeployStepfunctions" => "no",
-          "LambdaS3" => "",
-          "StepFunctionsS3" => "",
-          "StateMachineType" => "",
-        })
+        current_stack_outputs = stack_create(stack_name_from_current_dir, cloudformation_template(nil, false), {})
 
         puts "Deployment bucket created"
       end
@@ -224,34 +232,35 @@ module Simplerubysteps
 
       puts "Uploaded: #{lambda_zip_name}"
 
-      unless current_stack_outputs["LambdaFunctionARN"]
-        current_stack_outputs = stack_update(stack_name_from_current_dir, cloudformation_template, {
-          "DeployLambda" => "yes",
-          "DeployStepfunctions" => "no",
+      lambda_cf_config = JSON.parse(`ruby -e 'require "./workflow.rb";puts $sm.cloudformation_config.to_json'`)
+
+      if current_stack_outputs["LambdaCount"].nil? or current_stack_outputs["LambdaCount"].to_i != lambda_cf_config.length # FIXME better change detector like lambda_cf_config hash?
+        current_stack_outputs = stack_update(stack_name_from_current_dir, cloudformation_template(lambda_cf_config, false), {
           "LambdaS3" => lambda_zip_name,
-          "StepFunctionsS3" => "",
-          "StateMachineType" => "",
         })
 
         puts "Lambda function created"
       end
 
-      lambda_arn = current_stack_outputs["LambdaFunctionARN"]
+      lambda_arns = []
+      (0..current_stack_outputs["LambdaCount"].to_i - 1).each do |i|
+        lambda_arn = current_stack_outputs["LambdaFunctionARN#{i}"]
 
-      puts "Lambda function: #{lambda_arn}"
+        puts "Lambda function: #{lambda_arn}"
+
+        lambda_arns.push lambda_arn
+      end
 
       workflow_type = `ruby -e 'require "./workflow.rb";puts $sm.kind'`.strip
 
-      state_machine_json = JSON.parse(`LAMBDA_FUNCTION_ARN=#{lambda_arn} ruby -e 'require "./workflow.rb";puts $sm.render.to_json'`).to_json
+      state_machine_json = JSON.parse(`LAMBDA_FUNCTION_ARNS=#{lambda_arns.join(",")} ruby -e 'require "./workflow.rb";puts $sm.render.to_json'`).to_json
       state_machine_json_sha = Digest::SHA1.hexdigest state_machine_json
       state_machine_json_name = "statemachine-#{state_machine_json_sha}.json"
       upload_to_s3 deploy_bucket, state_machine_json_name, state_machine_json
 
       puts "Uploaded: #{state_machine_json_name}"
 
-      current_stack_outputs = stack_update(stack_name_from_current_dir, cloudformation_template, {
-        "DeployLambda" => "yes",
-        "DeployStepfunctions" => "yes",
+      current_stack_outputs = stack_update(stack_name_from_current_dir, cloudformation_template(lambda_cf_config, true), {
         "LambdaS3" => lambda_zip_name,
         "StepFunctionsS3" => state_machine_json_name,
         "StateMachineType" => workflow_type,

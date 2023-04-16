@@ -2,8 +2,8 @@
 
 Simplerubysteps makes it easy to manage AWS Step Functions with ruby.
 
-* Phase I (we are here): Experiment and explore. The aim is to explore the DSL capabilities and user experience of the automation tool. Things will work, but may change over time. The released gem versions of Simplerubysteps are early alpha versions and therefore should not be used by anyone in production.
-* Phase II: First release candidate
+* Phase I (we are here): Experimenting and exploring the problem and solution domain. The aim is to explore the DSL capabilities and user experience of the automation tool. Things will work, but may change over time. The released gem versions of Simplerubysteps are early alpha versions and therefore should not be used by anyone in production.
+* Phase II: First release candidate (possibly rewritten from scratch)
 * Phase III: Maintain and evolve
 
 ## Installation and Usage
@@ -102,6 +102,7 @@ To install this gem onto your local machine, run `bundle exec rake install`. To 
 * Custom IAM policies per Lambda task (e.g. to allow a task to send a message to an SQS queue)
 * Workflow action unit test support
 * Better error handling and reporting
+* Redeployement without affecting already deployed and possibly still running workflow versions
 * ...
 
 ## Contributing

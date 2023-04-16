@@ -1,8 +1,15 @@
 module Simplerubysteps
-  $FUNCTION_ARN = ENV["LAMBDA_FUNCTION_ARN"] ? ENV["LAMBDA_FUNCTION_ARN"] : "unknown"
+  $LAMBDA_FUNCTION_ARNS = ENV["LAMBDA_FUNCTION_ARNS"] ? ENV["LAMBDA_FUNCTION_ARNS"].split(",") : nil
 
-  def function_name
-    return "unknown" unless $FUNCTION_ARN =~ /.+\:function\:(.+)/
+  def pop_function_arn
+    return "unknown" unless $LAMBDA_FUNCTION_ARNS
+    arn = $LAMBDA_FUNCTION_ARNS.first
+    $LAMBDA_FUNCTION_ARNS.delete arn
+    arn
+  end
+
+  def pop_function_name
+    return "unknown" unless pop_function_arn =~ /.+\:function\:(.+)/
     $1
   end
 
@@ -23,6 +30,18 @@ module Simplerubysteps
       state.state_machine = self
 
       state
+    end
+
+    def cloudformation_config
+      data = []
+      states.each do |name, state|
+        if state.is_a? Task or state.is_a? Callback
+          data.push({
+            task: name,
+          })
+        end
+      end
+      data
     end
 
     def render
@@ -61,7 +80,7 @@ module Simplerubysteps
     def initialize(name)
       super
       @dict[:Type] = "Task"
-      @dict[:Resource] = $FUNCTION_ARN
+      @dict[:Resource] = pop_function_arn
       @dict[:Parameters] = {
         :Task => name,
         "Input.$" => "$",
@@ -101,7 +120,7 @@ module Simplerubysteps
       @dict[:Type] = "Task"
       @dict[:Resource] = "arn:aws:states:::lambda:invoke.waitForTaskToken"
       @dict[:Parameters] = {
-        :FunctionName => function_name,
+        :FunctionName => pop_function_name,
         :Payload => {
           :Task => name,
           "Input.$" => "$",
