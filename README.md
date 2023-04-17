@@ -99,7 +99,6 @@ To install this gem onto your local machine, run `bundle exec rake install`. To 
 
 ### TODOs
 
-* Custom IAM policies per Lambda task (e.g. to allow a task to send a message to an SQS queue)
 * Workflow task/action unit test support
 * Better error handling and reporting
 * Improved stack update strategy (e.g. renamed or added task scenario)
