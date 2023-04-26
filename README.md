@@ -10,7 +10,6 @@ Simplerubysteps makes it easy to manage AWS Step Functions with ruby.
 
 ### Prerequisites
 
-* AWS CLI installed (mainly for debugging privileges)
 * Configured AWS CLI profile with sufficient permissions to create IAM roles and policies, create Lambda functions, create and run Step Functions state machines, run CloudWatch log queries, etc.
 
 ### Install the gem and the srs CLI
@@ -22,8 +21,8 @@ gem install simplerubysteps
 ### Create an AWS Step Function State Machine with the simplerubysteps Ruby DSL
 
 ```
-mkdir -p samples/hello-world-2
-cd samples/hello-world-2
+mkdir -p samples/hello-world-3
+cd samples/hello-world-3
 
 vi workflow.rb
 ```
@@ -33,7 +32,6 @@ vi workflow.rb
 ```
 require "simplerubysteps"
 include Simplerubysteps
-kind "EXPRESS"
 
 GERMAN_WORDS = ["Hallo"]
 
@@ -43,7 +41,7 @@ end
 
 task :start do
   transition_to :german do |data|
-    is_german? data["hello"]
+    is_german? data["hi"]
   end
 
   default_transition_to :english
@@ -51,13 +49,13 @@ end
 
 task :german do
   action do |data|
-    { hello_world: "#{data["hello"]} Welt!" }
+    { hello_world: "#{data["hi"]} Welt" }
   end
 end
 
 task :english do
   action do |data|
-    { hello_world: "#{data["hello"]} World!" }
+    { hello_world: "#{data["hi"]} World" }
   end
 end
 ```
@@ -66,7 +64,7 @@ end
 
 ```
 export AWS_PROFILE=<AWS CLI profile name with sufficient privileges>
-cd samples/hello-world-2
+cd samples/hello-world-3
 
 srs deploy
 ```
@@ -75,38 +73,39 @@ srs deploy
 
 ```
 export AWS_PROFILE=<AWS CLI profile name with sufficient privileges>
-cd samples/hello-world-2
+cd samples/hello-world-3
 
-# Bellow: will print "Hello World!"
-echo '{"hello":"Hello"}'|srs start|jq -r ".output"|jq -r ".hello_world"
-
-# Bellow: will print "Hallo Welt!"
-echo '{"hello":"Hallo"}'|srs start|jq -r ".output"|jq -r ".hello_world"
+export OPEN_AWS_CONSOLE_EXECUTION_DETAILS_PAGE_URL_PREFIX="https://eu-central-1.console.aws.amazon.com/states/home?region=eu-central-1#/v2/executions/details/"
 ```
+
+#### Sample execution 1 (Hello World)
+
+```
+echo '{"hi":"Hello"}'|srs start --wait > result.json
+cat result.json|jq -r ".output"|jq -r ".hello_world"
+open "$OPEN_AWS_CONSOLE_EXECUTION_DETAILS_PAGE_URL_PREFIX$(cat result.json|jq -r ".execution_arn")"
+```
+
+![Sample Englisch execution](samples/hello-world-3/docs/sample_execution_english.png)
+
+#### Sample execution 2 (Hallo Welt)
+
+```
+echo '{"hi":"Hallo"}'|srs start --wait > result.json
+cat result.json|jq -r ".output"|jq -r ".hello_world"
+open "$OPEN_AWS_CONSOLE_EXECUTION_DETAILS_PAGE_URL_PREFIX$(cat result.json|jq -r ".execution_arn")"
+```
+
+![Sample German execution](samples/hello-world-3/docs/sample_execution_german.png)
 
 ### Delete CloudFormation stack (with srs destroy)
 
 ```
 export AWS_PROFILE=<AWS CLI profile name with sufficient privileges>
-cd samples/hello-world-2
+cd samples/hello-world-3
 
 srs destroy
 ```
-
-## Development
-
-To install this gem onto your local machine, run `bundle exec rake install`. To release a new version, update the version number in `version.rb`, and then run `bundle exec rake release`, which will create a git tag for the version, push git commits and tags, and push the `.gem` file to [rubygems.org](https://rubygems.org).
-
-### TODOs
-
-* Workflow task/action unit test support
-* Better error handling and reporting
-* Improved stack update strategy (e.g. renamed or added task scenario)
-* ...
-
-## Contributing
-
-Bug reports and pull requests are (soon - after alpha phase) welcome on GitHub at https://github.com/chtz/simplerubysteps
 
 ## License
 
