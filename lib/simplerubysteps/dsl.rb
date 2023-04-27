@@ -8,6 +8,20 @@ module Simplerubysteps
     $sm.kind = k
   end
 
+  def wait(name)
+    t = $sm.add Wait.new(name)
+
+    $tasks.last.next = t if $tasks.last
+
+    $tasks.push t
+    yield if block_given?
+    $tasks.pop
+  end
+
+  def seconds(s)
+    $tasks.last.seconds = s
+  end
+
   def task(name)
     t = $sm.add Task.new(name)
 

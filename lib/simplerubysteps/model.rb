@@ -80,6 +80,17 @@ module Simplerubysteps
     end
   end
 
+  class Wait < State
+    def initialize(name)
+      super
+      @dict[:Type] = "Wait"
+    end
+
+    def seconds=(s)
+      @dict[:Seconds] = s
+    end
+  end
+
   class Task < State
     attr_accessor :iam_permissions
 
