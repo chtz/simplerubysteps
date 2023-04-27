@@ -90,11 +90,15 @@ module Simplerubysteps
     $tasks.last.next = state
   end
 
-  def error_retry(interval, max, backoff)
+  def error_retry(interval, max, backoff, error = "States.ALL")
     $tasks.last.error_retry(interval, max, backoff)
   end
 
-  def error_catch(state)
+  def task_timeout(secs, state = nil)
+    $tasks.last.task_timeout secs, state
+  end
+
+  def error_catch(state, error = "States.ALL")
     $tasks.last.error_catch state
   end
 

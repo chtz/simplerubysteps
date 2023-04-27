@@ -589,6 +589,7 @@ module Simplerubysteps
         opts.separator "    destroy       Delete Step Functions State Machine"
         opts.separator "    log           Continuously prints Lambda function log output"
         opts.separator "    start         Start State Machine execution"
+        opts.separator "    stack         Display stack infos"
         opts.separator "    task-success  Continue Start State Machine execution"
         opts.separator ""
 

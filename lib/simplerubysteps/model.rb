@@ -94,6 +94,43 @@ module Simplerubysteps
       dict[:End] = true unless dict[:Next]
       dict
     end
+
+    def error_retry(interval, max, backoff, error = "States.ALL") # FIXME move to new baseclass for Task and Callback
+      data = {
+        :ErrorEquals => [error],
+        :IntervalSeconds => interval,
+        :BackoffRate => backoff,
+        :MaxAttempts => max,
+      }
+
+      unless @dict[:Retry]
+        @dict[:Retry] = [data]
+      else
+        @dict[:Retry].push data
+      end
+    end
+
+    def task_timeout(secs, state = nil) # FIXME move to new baseclass for Task and Callback
+      @dict[:TimeoutSeconds] = secs
+
+      if state
+        error_catch state, "States.Timeout"
+      end
+    end
+
+    def error_catch(state, error = "States.ALL") # FIXME move to new baseclass for Task and Callback
+      data = {
+        :ErrorEquals => [error],
+        :Next => (state.is_a? Symbol) ? state : state.name,
+        :ResultPath => "$.error",
+      }
+
+      unless @dict[:Catch]
+        @dict[:Catch] = [data]
+      else
+        @dict[:Catch].push data
+      end
+    end
   end
 
   class Parallel < State
@@ -165,27 +202,6 @@ module Simplerubysteps
         :Task => name,
         "Input.$" => "$",
       }
-    end
-
-    def error_retry(interval, max, backoff)
-      @dict[:Retry] = [
-        {
-          :ErrorEquals => ["States.ALL"],
-          :IntervalSeconds => interval,
-          :BackoffRate => backoff,
-          :MaxAttempts => max,
-        },
-      ]
-    end
-
-    def error_catch(state)
-      @dict[:Catch] = [
-        {
-          :ErrorEquals => ["States.ALL"],
-          :Next => (state.is_a? Symbol) ? state : state.name,
-          :ResultPath => "$.error",
-        },
-      ]
     end
 
     def action(&action_block)
