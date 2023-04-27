@@ -8,6 +8,29 @@ module Simplerubysteps
     $sm.kind = k
   end
 
+  def parallel(name)
+    t = $sm.add Parallel.new(name)
+
+    $tasks.last.next = t if $tasks.last
+
+    $tasks.push t
+    yield if block_given?
+    $tasks.pop
+  end
+
+  def branch
+    sm_backup = $sm
+    tasks_backup = $tasks
+
+    $sm = $tasks.last.new_branch
+    $tasks = []
+
+    yield if block_given?
+
+    $sm = sm_backup
+    $tasks = tasks_backup
+  end
+
   def wait(name)
     t = $sm.add Wait.new(name)
 

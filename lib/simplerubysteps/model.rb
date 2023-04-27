@@ -32,9 +32,25 @@ module Simplerubysteps
       state
     end
 
+    def deep_states # FIXME refactoring (fragility): order of returned states must be the same as the order of rendered states (lambda mapping by index)
+      int_deep_states states
+    end
+
+    def int_deep_states(int_states)
+      result = {}
+      int_states.each do |name, state|
+        if state.is_a? Parallel
+          state.branches.each do |branch|
+            result = result.merge int_deep_states(branch.states)
+          end
+        end
+      end
+      result.merge int_states
+    end
+
     def cloudformation_config
       data = []
-      states.each do |name, state|
+      deep_states.each do |name, state|
         if state.is_a? Task or state.is_a? Callback
           data.push({
             env: {
@@ -48,7 +64,7 @@ module Simplerubysteps
       data
     end
 
-    def render
+    def render # FIXME refactoring (fragility): order of rendered states must be the same than order of deep_states (lambda mapping by index)
       {
         :StartAt => @start_at,
         :States => @states.map { |name, state| [name, state.render] }.to_h,
@@ -77,6 +93,53 @@ module Simplerubysteps
       dict = @dict
       dict[:End] = true unless dict[:Next]
       dict
+    end
+  end
+
+  class Parallel < State
+    attr_reader :branches
+
+    def initialize(name)
+      super
+      @dict[:Type] = "Parallel"
+      @branches = []
+    end
+
+    def new_branch
+      b = Branch.new
+      @branches.push b
+      b
+    end
+
+    def render
+      dict = super
+      dict[:Branches] = @branches.map { |b| b.render }
+      dict
+    end
+  end
+
+  class Branch # FIXME refactor statemachine code dupduplicate
+    attr_reader :states
+    attr_reader :start_at
+
+    def initialize()
+      @states = {}
+    end
+
+    def add(state)
+      @start_at = state.name unless @start_at
+
+      @states[state.name] = state
+      state.state_machine = self
+
+      state
+    end
+
+    def render
+      {
+        :StartAt => @start_at,
+        :States => @states.map { |name, state| [name, state.render] }.to_h,
+      }
     end
   end
 

@@ -31,11 +31,11 @@ def handler(event:, context:)
 
   if event["Token"]
     unless $queue_client
-      $sm.states[ENV["task"].to_sym].perform_action event["Input"], event["Token"]
+      $sm.deep_states[ENV["task"].to_sym].perform_action event["Input"], event["Token"]
     else
-      $sm.states[ENV["task"].to_sym].perform_queue_action event["Input"], event["Token"], $queue_client
+      $sm.deep_states[ENV["task"].to_sym].perform_queue_action event["Input"], event["Token"], $queue_client
     end
   else
-    $sm.states[ENV["task"].to_sym].perform_action event["Input"]
+    $sm.deep_states[ENV["task"].to_sym].perform_action event["Input"]
   end
 end
