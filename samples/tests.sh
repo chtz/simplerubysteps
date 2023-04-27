@@ -6,9 +6,10 @@ dirs=(
     "hello-world-2"
     "hello-world-3"
     "permissions"
-    #"sample1" # FIXME flaky test
+    # "sample1" # FIXME flaky test
     "sample2"
     "sample3"
+    "error1"
 )
 
 run_tests() {

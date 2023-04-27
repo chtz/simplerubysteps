@@ -167,6 +167,27 @@ module Simplerubysteps
       }
     end
 
+    def error_retry(interval, max, backoff)
+      @dict[:Retry] = [
+        {
+          :ErrorEquals => ["States.ALL"],
+          :IntervalSeconds => interval,
+          :BackoffRate => backoff,
+          :MaxAttempts => max,
+        },
+      ]
+    end
+
+    def error_catch(state)
+      @dict[:Catch] = [
+        {
+          :ErrorEquals => ["States.ALL"],
+          :Next => (state.is_a? Symbol) ? state : state.name,
+          :ResultPath => "$.error",
+        },
+      ]
+    end
+
     def action(&action_block)
       @action_block = action_block
     end

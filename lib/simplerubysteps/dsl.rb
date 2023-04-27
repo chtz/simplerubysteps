@@ -90,6 +90,14 @@ module Simplerubysteps
     $tasks.last.next = state
   end
 
+  def error_retry(interval, max, backoff)
+    $tasks.last.error_retry(interval, max, backoff)
+  end
+
+  def error_catch(state)
+    $tasks.last.error_catch state
+  end
+
   def transition_to(state, &condition_block)
     choice = $tasks.last.implicit_choice
 
